@@ -3,6 +3,7 @@
 // reloading the tab ends the session.
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
+import { t } from './i18n'
 
 export type Row = Record<string, any>
 export type Params = Record<string, string | number | boolean | null | undefined>
@@ -46,7 +47,7 @@ export async function request<T = any>(
       body: opts.text ?? (opts.body !== undefined ? JSON.stringify(opts.body) : undefined),
     })
   } catch {
-    throw new ApiError(0, 'Sunucuya ulaşılamadı')
+    throw new ApiError(0, t('api.unreachable'))
   }
   if (resp.status === 401 && !opts.key) onUnauthorized()
   const text = await resp.text()
@@ -64,7 +65,7 @@ export async function download(path: string, params: Params, filename: string) {
   try {
     resp = await fetch(path + query(params), { headers: { Authorization: `Bearer ${token}` } })
   } catch {
-    throw new ApiError(0, 'Sunucuya ulaşılamadı')
+    throw new ApiError(0, t('api.unreachable'))
   }
   if (resp.status === 401) onUnauthorized()
   if (!resp.ok) {

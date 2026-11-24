@@ -4,6 +4,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import type { ApiError, Paged } from '../lib/api'
 import { num } from '../lib/format'
+import { languages, t, tx, useLang } from '../lib/i18n'
 
 // ---- small pieces ----
 
@@ -14,16 +15,17 @@ export function Badge({ tone = 'neutral', children }: { tone?: Tone; children: R
   return <span className="badge" style={{ '--c': tones[tone] } as CSSProperties}>{children}</span>
 }
 
+// The label is a message key (or, from an extension, plain text): see tx.
 const statuses: Record<string, [Tone, string]> = {
-  active: ['ok', 'Aktif'], suspended: ['warn', 'Askıda'], closed: ['neutral', 'Kapalı'],
-  payment: ['ok', 'Ödeme'], adjustment: ['warn', 'Düzeltme'], refund: ['acc', 'İade'], usage: ['neutral', 'Kullanım'],
+  active: ['ok', 'status.active'], suspended: ['warn', 'status.suspended'], closed: ['neutral', 'status.closed'],
+  payment: ['ok', 'status.payment'], adjustment: ['warn', 'status.adjustment'], refund: ['acc', 'status.refund'], usage: ['neutral', 'status.usage'],
 }
-/** Lets an edition name the statuses its own records use. */
+/** Lets an edition name the statuses its own records use; a label may be a message key of its catalogue. */
 export const addStatuses = (more: Record<string, [Tone, string]>) => { Object.assign(statuses, more) }
 
 export function StatusBadge({ value }: { value: string }) {
   const [tone, label] = statuses[value] ?? ['neutral', value]
-  return <Badge tone={tone}>{label}</Badge>
+  return <Badge tone={tone}>{tx(label)}</Badge>
 }
 
 export function Stat({ label, value, unit, sub, tone, text }: { label: string; value: ReactNode; unit?: string; sub?: ReactNode; tone?: Tone; text?: boolean }) {
@@ -100,6 +102,14 @@ export function Field({ label, hint, error, span, children }: { label: string; h
   )
 }
 
+/** The interface language switch (top bar, sign-in page). */
+export function LangSwitch() {
+  const { lang, setLang } = useLang()
+  return <span title={t('lang.switch')} aria-label={t('lang.switch')}>
+    <Split small value={lang} options={languages} onChange={(v) => setLang(v as typeof lang)} />
+  </span>
+}
+
 // ---- table ----
 
 export interface Col<R> {
@@ -153,40 +163,41 @@ export function DataTable<R extends object>(props: {
       </div></div>
       {state === 'load' && <div>
         {skeleton.map((w, i) => <div className="skel" key={i}><div style={{ width: `${w}%` }} /></div>)}
-        <div className="tx3" style={{ padding: '10px 16px', fontSize: 12 }}>Yükleniyor…</div>
+        <div className="tx3" style={{ padding: '10px 16px', fontSize: 12 }}>{t('kit.loading')}</div>
       </div>}
       {state === 'empty' && <div className="state">
-        <div className="t">{props.empty?.title ?? 'Kayıt bulunamadı'}</div>
-        <div className="d">{props.empty?.desc ?? 'Arama ya da filtrelerle eşleşen kayıt yok. Filtreleri temizleyip yeniden deneyin.'}</div>
+        <div className="t">{props.empty?.title ?? t('kit.emptyTitle')}</div>
+        <div className="d">{props.empty?.desc ?? t('kit.emptyDesc')}</div>
         {props.empty?.action}
       </div>}
       {state === 'error' && <div className="state">
-        <div className="t bad">{props.errorTitle ?? 'Liste yüklenemedi'}</div>
-        <div className="d">{error!.status ? <>Sunucu isteği reddetti: {error!.message} <span className="mono">(HTTP {error!.status})</span>.</> : 'Sunucuya ulaşılamadı.'} Veriler değişmedi; yeniden deneyebilirsiniz.</div>
-        {props.onRetry && <button className="btn" onClick={props.onRetry}>Yeniden dene</button>}
+        <div className="t bad">{props.errorTitle ?? t('kit.errorTitle')}</div>
+        <div className="d">{error!.status ? <>{t('kit.refused', { message: error!.message })} <span className="mono">(HTTP {error!.status})</span>.</> : t('kit.unreachable')} {t('kit.unchanged')}</div>
+        {props.onRetry && <button className="btn" onClick={props.onRetry}>{t('action.retry')}</button>}
       </div>}
     </>
   )
 }
 
-export function Pager({ p, noun = 'kayıt' }: { p: Paged; noun?: string }) {
+/** `noun` names what is counted, in the plural for English ("calls"). */
+export function Pager({ p, noun = t('kit.record') }: { p: Paged; noun?: string }) {
   const from = p.rows.length ? p.page * p.pageSize + 1 : 0
   const to = p.page * p.pageSize + p.rows.length
   return (
     <div className="tfoot">
       <div className="grow">
         {p.total != null
-          ? <>Sayfa {p.page + 1} / {Math.max(1, Math.ceil(p.total / p.pageSize))} · {num(p.total)} {noun}</>
-          : <>{num(from)}–{num(to)} arası {noun}</>} · sayfa başına {p.pageSize}
+          ? t('kit.pageOf', { page: p.page + 1, pages: Math.max(1, Math.ceil(p.total / p.pageSize)), total: num(p.total), noun })
+          : t('kit.range', { from: num(from), to: num(to), noun })} · {t('kit.perPage', { n: p.pageSize })}
       </div>
-      <button className="btn sm" disabled={p.page === 0} onClick={() => p.setPage(p.page - 1)}>Önceki</button>
-      <button className="btn sm" disabled={!p.hasNext} onClick={() => p.setPage(p.page + 1)}>Sonraki</button>
+      <button className="btn sm" disabled={p.page === 0} onClick={() => p.setPage(p.page - 1)}>{t('kit.prev')}</button>
+      <button className="btn sm" disabled={!p.hasNext} onClick={() => p.setPage(p.page + 1)}>{t('kit.next')}</button>
     </div>
   )
 }
 
 /** Text input whose value reaches the caller after typing pauses. */
-export function Search({ value, onChange, placeholder = 'Ara', mono, width = 260 }: { value: string; onChange: (v: string) => void; placeholder?: string; mono?: boolean; width?: number | string }) {
+export function Search({ value, onChange, placeholder = t('kit.search'), mono, width = 260 }: { value: string; onChange: (v: string) => void; placeholder?: string; mono?: boolean; width?: number | string }) {
   const [text, setText] = useState(value)
   useEffect(() => setText(value), [value])
   useEffect(() => {
@@ -245,7 +256,7 @@ export function UIProvider({ children }: { children: ReactNode }) {
             <div className="tx2 pretty" style={{ marginTop: 6 }}>{ask.body}</div>
           </div>
           <div className="modal-foot" style={{ marginTop: 4 }}>
-            <button ref={cancel} className="btn" onClick={() => answer(false)}>Vazgeç</button>
+            <button ref={cancel} className="btn" onClick={() => answer(false)}>{t('action.cancel')}</button>
             <button className={'btn ' + (ask.danger ? 'danger-fill' : 'primary')} onClick={() => answer(true)}>{ask.action}</button>
           </div>
         </Modal>
@@ -339,7 +350,7 @@ export function FormModal(props: {
   const submit = async () => {
     const errs: Record<string, string> = {}
     for (const [k, msg] of Object.entries(props.validate?.(values) ?? {})) if (msg) errs[k] = msg
-    for (const f of fields) if (f.required && (values[f.key] == null || String(values[f.key]).trim() === '')) errs[f.key] = 'Bu alan zorunlu.'
+    for (const f of fields) if (f.required && (values[f.key] == null || String(values[f.key]).trim() === '')) errs[f.key] = t('kit.required')
     setErrors(errs)
     if (fields.some((f) => f.advanced && errs[f.key])) setMore(true)
     if (Object.keys(errs).length) return
@@ -380,8 +391,8 @@ export function FormModal(props: {
       <form className="grid2" onSubmit={(e) => { e.preventDefault(); submit() }}>
         {fields.filter((f) => !f.advanced).map((f, i) => one(f, i === 0))}
         {advanced.length > 0 && (
-          <Disclosure title="Gelişmiş ayarlar" open={more} onToggle={() => setMore(!more)}
-            mark={changed > 0 ? <Badge tone="acc">{changed} ayar değiştirilmiş</Badge> : <span className="sub">varsayılan değerlerde; çoğu kurulumda dokunmak gerekmez</span>}>
+          <Disclosure title={t('kit.advanced')} open={more} onToggle={() => setMore(!more)}
+            mark={changed > 0 ? <Badge tone="acc">{t('kit.advancedChanged', { n: changed })}</Badge> : <span className="sub">{t('kit.advancedDefault')}</span>}>
             {advanced.map((f) => one(f, false))}
           </Disclosure>
         )}
@@ -389,7 +400,7 @@ export function FormModal(props: {
       </form>
       {failure && <div className="banner bad">{failure}</div>}
       <div className="modal-foot">
-        <button className="btn" onClick={props.onClose}>Vazgeç</button>
+        <button className="btn" onClick={props.onClose}>{t('action.cancel')}</button>
         <button className="btn primary" disabled={busy} onClick={submit}>{props.action}</button>
       </div>
     </Modal>

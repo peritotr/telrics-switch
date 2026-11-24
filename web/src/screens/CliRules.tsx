@@ -1,29 +1,30 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { useState } from 'react'
 import { api, useInvalidate, useLookup, usePaged, type Row } from '../lib/api'
+import { t } from '../lib/i18n'
 import { useSession } from '../lib/session'
 import { Badge, DataTable, FormModal, PageHead, Pager, Search, Toggle, errorText, useUI, type Col, type FieldDef } from '../ui/kit'
 import { int, text } from './common'
 
-const actions = [
-  { value: 'block', label: 'Engelle' }, { value: 'allow', label: 'İzin ver' }, { value: 'rewrite', label: 'Dönüştür' },
-  { value: 'anonymous', label: 'Numarasızı reddet' },
+const actions = () => [
+  { value: 'block', label: t('clirules.block') }, { value: 'allow', label: t('clirules.allow') }, { value: 'rewrite', label: t('clirules.rewrite') },
+  { value: 'anonymous', label: t('clirules.anonymous') },
 ]
-const sources = [{ value: 'from', label: 'From' }, { value: 'pai', label: 'Kimlik (PAI)' }]
+const sources = () => [{ value: 'from', label: 'From' }, { value: 'pai', label: t('clirules.pai') }]
 
 function actionBadge(r: Row) {
   switch (r.action) {
-    case 'block': return <Badge tone="bad">Engelle</Badge>
-    case 'allow': return <Badge tone="ok">İzin ver</Badge>
-    case 'anonymous': return <Badge tone="bad">Numarasızı reddet</Badge>
-    default: return <Badge>Dönüştür</Badge>
+    case 'block': return <Badge tone="bad">{t('clirules.block')}</Badge>
+    case 'allow': return <Badge tone="ok">{t('clirules.allow')}</Badge>
+    case 'anonymous': return <Badge tone="bad">{t('clirules.anonymous')}</Badge>
+    default: return <Badge>{t('clirules.rewrite')}</Badge>
   }
 }
 
 /** What a rewrite rule makes of a number, in words. */
 function change(r: Row) {
-  const parts = [r.strip_digits > 0 ? `baştan ${r.strip_digits} hane sil` : '', r.add_prefix ? `başa ${r.add_prefix} ekle` : ''].filter(Boolean)
-  return parts.length ? parts.join(', ') : 'değişiklik yok'
+  const parts = [r.strip_digits > 0 ? t('clirules.strip', { n: r.strip_digits }) : '', r.add_prefix ? t('clirules.addPrefix', { prefix: r.add_prefix }) : ''].filter(Boolean)
+  return parts.length ? parts.join(', ') : t('clirules.noChange')
 }
 
 export function CliRules() {
@@ -42,7 +43,9 @@ export function CliRules() {
     } catch (e) { ui.toast(errorText(e as any)) }
   }
   const remove = async (r: Row) => {
-    if (!(await ui.confirm({ title: 'Kural silinsin mi?', body: `${r.client_id ? clients.name(r.client_id) : 'Tüm müşteriler'} için ${r.action === 'anonymous' ? 'numarasız arayanı reddetme' : `önek ${r.prefix || '(tümü)'}`} kuralı kaldırılır. Bu işlem geri alınamaz.`, action: 'Sil', danger: true }))) return
+    if (!(await ui.confirm({ title: t('clirules.deleteTitle'), body: r.action === 'anonymous'
+      ? t('clirules.deleteAnon', { client: r.client_id ? clients.name(r.client_id) : t('clirules.allClients') })
+      : t('clirules.deletePrefix', { client: r.client_id ? clients.name(r.client_id) : t('clirules.allClients'), prefix: r.prefix || t('clirules.all') }), action: t('action.delete'), danger: true }))) return
     try {
       await api.del(`/v1/cli-rules/${r.id}`)
       invalidate('/v1/cli-rules')
@@ -50,51 +53,51 @@ export function CliRules() {
   }
 
   const cols: Col<Row>[] = [
-    { label: 'Müşteri', width: 'minmax(160px,1fr)', render: (r) => (r.client_id ? clients.name(r.client_id) : <span className="tx2">Tüm müşteriler</span>) },
-    { label: 'Numara', width: '110px', render: (r) => (r.number_source === 'pai' ? 'Kimlik (PAI)' : 'From') },
-    { label: 'Arayan öneki', width: '140px', mono: true, render: (r) => (r.action === 'anonymous' ? <span className="tx3">—</span> : r.prefix || '(tümü)') },
-    { label: 'İşlem', width: '160px', render: actionBadge },
-    { label: 'Dönüşüm', width: 'minmax(180px,1fr)', render: (r) => (r.action === 'rewrite' ? change(r) : <span className="tx3">—</span>) },
-    { label: 'Not', width: 'minmax(140px,1fr)', render: (r) => <span className="tx2">{r.note}</span> },
-    { label: '', width: '70px', align: 'right', render: (r) => canEdit && <button className="btn inline" onClick={() => setEditing(r)}>Düzenle</button> },
+    { label: t('clirules.client'), width: 'minmax(160px,1fr)', render: (r) => (r.client_id ? clients.name(r.client_id) : <span className="tx2">{t('clirules.allClients')}</span>) },
+    { label: t('clirules.number'), width: '110px', render: (r) => (r.number_source === 'pai' ? t('clirules.pai') : 'From') },
+    { label: t('clirules.callerPrefix'), width: '140px', mono: true, render: (r) => (r.action === 'anonymous' ? <span className="tx3">—</span> : r.prefix || t('clirules.all')) },
+    { label: t('clirules.action'), width: '160px', render: actionBadge },
+    { label: t('clirules.change'), width: 'minmax(180px,1fr)', render: (r) => (r.action === 'rewrite' ? change(r) : <span className="tx3">—</span>) },
+    { label: t('clirules.note'), width: 'minmax(140px,1fr)', render: (r) => <span className="tx2">{r.note}</span> },
+    { label: '', width: '70px', align: 'right', render: (r) => canEdit && <button className="btn inline" onClick={() => setEditing(r)}>{t('action.edit')}</button> },
     { label: '', width: '50px', align: 'right', render: (r) => <Toggle on={r.enabled} onChange={canEdit ? (v) => patch(r, { enabled: v }) : undefined} /> },
-    { label: '', width: '50px', align: 'right', render: (r) => canEdit && <button className="btn inline" onClick={() => remove(r)}>Sil</button> },
+    { label: '', width: '64px', align: 'right', render: (r) => canEdit && <button className="btn inline" onClick={() => remove(r)}>{t('action.delete')}</button> },
   ]
   const fields: FieldDef[] = [
-    { key: 'client_id', label: 'Müşteri', type: 'select', span: true, blank: 'Tüm müşteriler',
+    { key: 'client_id', label: t('clirules.client'), type: 'select', span: true, blank: t('clirules.allClients'),
       options: clients.rows.map((c) => ({ value: String(c.id), label: c.name })) },
-    { key: 'number_source', label: 'Bakılan numara', type: 'seg', options: sources, span: true,
-      hint: 'From: arayanın gönderdiği numara. Kimlik (PAI): P-Asserted-Identity başlığındaki numara; başlık yoksa arayan numarasız sayılır' },
-    { key: 'action', label: 'İşlem', type: 'seg', options: actions, span: true },
-    { key: 'prefix', label: 'Arayan öneki', type: 'mono', placeholder: 'ör. 90212', hint: 'Ülke koduyla, + olmadan. Boş = tüm arayanlar', show: (v) => v.action !== 'anonymous' },
-    { key: 'strip_digits', label: 'Baştan silinecek hane', type: 'int', show: (v) => v.action === 'rewrite' },
-    { key: 'add_prefix', label: 'Başa eklenecek', type: 'mono', placeholder: 'ör. 0', show: (v) => v.action === 'rewrite' },
-    { key: 'note', label: 'Not', span: true },
+    { key: 'number_source', label: t('clirules.source'), type: 'seg', options: sources(), span: true,
+      hint: t('clirules.sourceHint') },
+    { key: 'action', label: t('clirules.action'), type: 'seg', options: actions(), span: true },
+    { key: 'prefix', label: t('clirules.callerPrefix'), type: 'mono', placeholder: t('clirules.prefixPlaceholder'), hint: t('clirules.prefixHint'), show: (v) => v.action !== 'anonymous' },
+    { key: 'strip_digits', label: t('clirules.stripDigits'), type: 'int', show: (v) => v.action === 'rewrite' },
+    { key: 'add_prefix', label: t('clirules.addPrefixLabel'), type: 'mono', placeholder: t('clirules.addPlaceholder'), show: (v) => v.action === 'rewrite' },
+    { key: 'note', label: t('clirules.note'), span: true },
   ]
   const row = editing === 'new' ? null : editing
 
   return (
     <div className="page">
-      <PageHead title="Arayan numara kuralları" desc="Arayan numaraya (From ya da P-Asserted-Identity) göre çağrıyı engeller, kabul eder ya da sağlayıcıya gösterilecek numarayı dönüştürür. Her numaraya kendi kuralları uygulanır; en uzun eşleşen önek geçerlidir, eşit uzunlukta müşterinin kendi kuralı önce gelir. Numarasız arayanı reddetme kuralı önek kurallarından önce uygulanır.">
-        {canEdit && <button className="btn primary" onClick={() => setEditing('new')}>Kural ekle</button>}
+      <PageHead title={t('clirules.title')} desc={t('clirules.desc')}>
+        {canEdit && <button className="btn primary" onClick={() => setEditing('new')}>{t('clirules.add')}</button>}
       </PageHead>
       <div className="card clip">
         <div className="toolbar">
           <Search value={q} onChange={setQ} />
-          <div className="grow tx2 pretty">Yalnızca listedeki arayanları kabul etmek için müşteriye boş önekli bir “Engelle” kuralı, izinli önekler için “İzin ver” kuralları ekleyin. Numarası olmayan ya da gizli arayanlar “Numarasızı reddet” ile 433 cevabı alır.</div>
+          <div className="grow tx2 pretty">{t('clirules.help')}</div>
         </div>
         <DataTable cols={cols} rows={list.rows} minWidth={1090} loading={list.loading} error={list.error} onRetry={list.refetch}
-          empty={q ? { title: 'Kayıt bulunamadı', desc: 'Aramayla eşleşen kural yok.', action: <button className="btn" onClick={() => setQ('')}>Aramayı temizle</button> }
-            : { title: 'Henüz kural yok', desc: 'Kural yokken arayan numaraya bakılmaz; her arayan kabul edilir ve numarası olduğu gibi iletilir.' }} />
-        <Pager p={list} noun="kural" />
+          empty={q ? { title: t('clirules.notFound'), desc: t('clirules.notFoundDesc'), action: <button className="btn" onClick={() => setQ('')}>{t('list.clearSearch')}</button> }
+            : { title: t('clirules.none'), desc: t('clirules.noneDesc') }} />
+        <Pager p={list} noun={t('clirules.noun')} />
       </div>
-      {editing && <FormModal title={row ? 'Kuralı düzenle' : 'Kural ekle'} action={row ? 'Kaydet' : 'Ekle'} onClose={() => setEditing(null)} fields={fields}
+      {editing && <FormModal title={row ? t('clirules.edit') : t('clirules.add')} action={row ? t('action.save') : t('action.add')} onClose={() => setEditing(null)} fields={fields}
         initial={row ? { client_id: row.client_id ? String(row.client_id) : '', number_source: row.number_source ?? 'from', prefix: row.prefix, action: row.action, strip_digits: String(row.strip_digits), add_prefix: row.add_prefix, note: row.note }
           : { client_id: '', number_source: 'from', action: 'block', strip_digits: '0' }}
         validate={(v) => ({
-          ...(v.action === 'anonymous' || /^\d*$/.test(v.prefix ?? '') ? {} : { prefix: 'Önek yalnızca rakam içerebilir.' }),
-          ...(v.action === 'rewrite' && v.number_source === 'pai' ? { action: 'Dönüştürme yalnızca From numarasına uygulanır.' } : {}),
-          ...(v.action !== 'rewrite' || /^\d*$/.test(v.add_prefix ?? '') ? {} : { add_prefix: 'Yalnızca rakam içerebilir.' }),
+          ...(v.action === 'anonymous' || /^\d*$/.test(v.prefix ?? '') ? {} : { prefix: t('clirules.errPrefix') }),
+          ...(v.action === 'rewrite' && v.number_source === 'pai' ? { action: t('clirules.errRewritePai') } : {}),
+          ...(v.action !== 'rewrite' || /^\d*$/.test(v.add_prefix ?? '') ? {} : { add_prefix: t('clirules.errDigits') }),
         })}
         onSubmit={async (v) => {
           const rewrite = v.action === 'rewrite'
@@ -107,7 +110,7 @@ export function CliRules() {
           else await api.post('/v1/cli-rules', body)
           invalidate('/v1/cli-rules')
           setEditing(null)
-          ui.toast(row ? 'Kural güncellendi' : 'Kural eklendi')
+          ui.toast(row ? t('clirules.updated') : t('clirules.added'))
         }} />}
     </div>
   )

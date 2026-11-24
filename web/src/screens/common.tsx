@@ -5,6 +5,7 @@ import { useState, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { api, useGet, useInvalidate, usePaged, type Params, type Row } from '../lib/api'
 import { dt, money, parseMoney, signed, sipReason, sipTone } from '../lib/format'
+import { t } from '../lib/i18n'
 import { useSession } from '../lib/session'
 import { DataTable, Field, FormModal, Modal, PageHead, Pager, Search, Seg, StatusBadge, errorText, useUI, type Col, type FieldDef } from '../ui/kit'
 
@@ -38,12 +39,12 @@ export function ListPage(props: {
           <div className="grow" />
         </div>
         <DataTable cols={props.cols} rows={list.rows} minWidth={props.minWidth} loading={list.loading} error={list.error} onRetry={list.refetch} onRow={props.onRow}
-          empty={q ? { title: 'Kayıt bulunamadı', desc: 'Aramayla eşleşen kayıt yok. Aramayı temizleyip yeniden deneyin.', action: <button className="btn" onClick={() => setQ('')}>Aramayı temizle</button> }
-            : { title: `Henüz ${props.noun} yok`, desc: canEdit && props.add ? `İlk kaydı “${props.add.label}” ile oluşturun.` : 'Bu listede gösterilecek kayıt yok.' }} />
+          empty={q ? { title: t('list.notFound'), desc: t('list.notFoundDesc'), action: <button className="btn" onClick={() => setQ('')}>{t('list.clearSearch')}</button> }
+            : { title: t('list.none', { noun: props.noun }), desc: canEdit && props.add ? t('list.createFirst', { action: props.add.label }) : t('list.nothing') }} />
         <Pager p={list} noun={props.noun} />
       </div>
       {adding && props.add && (
-        <FormModal title={props.add.title} sub={props.add.sub} fields={props.add.fields} initial={props.add.initial} action="Oluştur" onClose={() => setAdding(false)}
+        <FormModal title={props.add.title} sub={props.add.sub} fields={props.add.fields} initial={props.add.initial} action={t('action.create')} onClose={() => setAdding(false)}
           onSubmit={async (v) => {
             const row = await api.post(props.path, props.add!.build(v))
             invalidate(props.path)
@@ -60,17 +61,17 @@ export const text = (v: any) => { const s = String(v ?? '').trim(); return s ===
 export const int = (v: any, def = 0) => { const n = parseInt(String(v ?? ''), 10); return Number.isFinite(n) ? n : def }
 
 /** The audio codecs a connection or a trunk can be limited to, as the API names them. */
-export const codecOptions = ['PCMA', 'PCMU', 'G729', 'G722', 'opus', 'GSM', 'iLBC', 'G723', 'AMR', 'AMR-WB', 'speex'].map((c) => ({
-  value: c, label: ({ PCMA: 'G.711 A (PCMA)', PCMU: 'G.711 µ (PCMU)', G729: 'G.729', G722: 'G.722', opus: 'Opus', G723: 'G.723.1' } as Record<string, string>)[c] ?? c,
+export const codecOptions = () => ['PCMA', 'PCMU', 'G729', 'G722', 'opus', 'GSM', 'iLBC', 'G723', 'AMR', 'AMR-WB', 'speex'].map((c) => ({
+  value: c, label: ({ PCMA: t('codec.PCMA'), PCMU: t('codec.PCMU'), G729: 'G.729', G722: 'G.722', opus: 'Opus', G723: 'G.723.1' } as Record<string, string>)[c] ?? c,
 }))
 /** A whole number of seconds within bounds, or the value that means "no setting". */
 export const secondsError = (v: any, least: number, most: number) =>
-  /^\d*$/.test(String(v ?? '')) && (int(v) === 0 || (int(v) >= least && int(v) <= most)) ? undefined : `0 ya da ${least}–${most} arası bir sayı.`
+  /^\d*$/.test(String(v ?? '')) && (int(v) === 0 || (int(v) >= least && int(v) <= most)) ? undefined : t('common.secondsRange', { least, most })
 export const idOrNull = (v: any) => (v === '' || v == null ? null : Number(v))
 
 export const currencies = ['USD', 'EUR', 'TRY'].map((c) => ({ value: c, label: c }))
 
-const kinds = [{ value: 'payment', label: 'Ödeme' }, { value: 'adjustment', label: 'Düzeltme' }, { value: 'refund', label: 'İade' }]
+const kinds = () => [{ value: 'payment', label: t('status.payment') }, { value: 'adjustment', label: t('status.adjustment') }, { value: 'refund', label: t('status.refund') }]
 
 /**
  * Records a payment, adjustment or refund. For a client the balance is what
@@ -87,15 +88,15 @@ export function PaymentModal({ party, row, onClose }: { party: string; row: Row;
   const invalidate = useInvalidate()
   const micro = parseMoney(amount)
   const after = micro == null ? null : row.balance + (party === 'vendor' ? -micro : micro)
-  const label = party === 'vendor' ? 'Sağlayıcıya borcumuz' : 'Kullanılabilir bakiye'
+  const label = party === 'vendor' ? t('payment.vendorBalance') : t('payment.clientBalance')
   const submit = async () => {
-    if (micro == null || micro === 0) return setError('Tutar sıfırdan farklı bir sayı olmalı (en çok 6 ondalık).')
-    if (kind === 'payment' && micro < 0) return setError('Ödeme tutarı eksi olamaz; düşüm için Düzeltme kullanın.')
+    if (micro == null || micro === 0) return setError(t('payment.errAmount'))
+    if (kind === 'payment' && micro < 0) return setError(t('payment.errNegative'))
     setBusy(true)
     try {
       await api.post('/v1/payments', { party_type: party, party_id: row.id, amount: micro, kind, reference, note })
       invalidate('/v1/ledger', `/v1/${party}s`)
-      ui.toast('Kayıt eklendi; bakiye güncellendi')
+      ui.toast(t('payment.done'))
       onClose()
     } catch (e) {
       setError(errorText(e as any))
@@ -105,25 +106,25 @@ export function PaymentModal({ party, row, onClose }: { party: string; row: Row;
   return (
     <Modal width={440} onClose={onClose}>
       <div>
-        <div className="modal-title">Ödeme ekle</div>
+        <div className="modal-title">{t('payment.title')}</div>
         <div className="tx2" style={{ marginTop: 2 }}>{row.name}</div>
       </div>
-      <Field label="Tür"><Seg value={kind} options={kinds} onChange={setKind} /></Field>
-      <Field label={`Tutar (${row.currency})`} error={error} hint={kind === 'payment' ? undefined : 'Düşüm için eksi tutar girin.'}>
-        <input className={'input num' + (error ? ' err' : '')} autoFocus inputMode="decimal" placeholder="0,00" value={amount}
+      <Field label={t('payment.kind')}><Seg value={kind} options={kinds()} onChange={setKind} /></Field>
+      <Field label={t('payment.amount', { currency: row.currency })} error={error} hint={kind === 'payment' ? undefined : t('payment.negativeHint')}>
+        <input className={'input num' + (error ? ' err' : '')} autoFocus inputMode="decimal" placeholder={money(0)} value={amount}
           onChange={(e) => { setAmount(e.target.value); setError('') }} onKeyDown={(e) => e.key === 'Enter' && submit()} />
       </Field>
       <div className="grid2">
-        <Field label="Referans"><input className="input mono" value={reference} onChange={(e) => setReference(e.target.value)} /></Field>
-        <Field label="Not"><input className="input" value={note} onChange={(e) => setNote(e.target.value)} /></Field>
+        <Field label={t('payment.reference')}><input className="input mono" value={reference} onChange={(e) => setReference(e.target.value)} /></Field>
+        <Field label={t('payment.note')}><input className="input" value={note} onChange={(e) => setNote(e.target.value)} /></Field>
       </div>
       <div className="kv" style={{ padding: '10px 12px', background: 'var(--panel2)', borderRadius: 8 }}>
         <span>{label}</span>
         <span className="mono">{money(row.balance)} → {after == null ? '—' : money(after)} {row.currency}</span>
       </div>
       <div className="modal-foot">
-        <button className="btn" onClick={onClose}>Vazgeç</button>
-        <button className="btn primary" disabled={busy} onClick={submit}>Kaydet</button>
+        <button className="btn" onClick={onClose}>{t('action.cancel')}</button>
+        <button className="btn primary" disabled={busy} onClick={submit}>{t('action.save')}</button>
       </div>
     </Modal>
   )
@@ -133,21 +134,21 @@ export function LedgerTab({ party, row, action }: { party: string; row: Row; act
   const q = useGet<Row[]>('/v1/ledger', { party_type: party, party_id: row.id })
   const rows = [...(q.data ?? [])].reverse()
   const cols: Col<Row>[] = [
-    { label: 'Tarih', width: '150px', mono: true, render: (l) => dt(l.created_at) },
-    { label: 'Tür', width: '100px', render: (l) => <StatusBadge value={l.kind} /> },
-    { label: `Tutar ${row.currency}`, width: '130px', align: 'right', mono: true, render: (l) => <span className={l.amount > 0 === (party !== 'vendor') ? 'ok' : 'bad'}>{signed(l.amount)}</span> },
-    { label: party === 'vendor' ? `Sonraki borç ${row.currency}` : `Sonraki bakiye ${row.currency}`, width: '150px', align: 'right', mono: true, render: (l) => money(l.balance_after) },
-    { label: 'Referans', width: '130px', mono: true, render: (l) => l.ref },
-    { label: 'Not', width: 'minmax(160px,1fr)', render: (l) => <span className="tx2">{l.note}</span> },
+    { label: t('ledger.date'), width: '150px', mono: true, render: (l) => dt(l.created_at) },
+    { label: t('ledger.kind'), width: '100px', render: (l) => <StatusBadge value={l.kind} /> },
+    { label: t('ledger.amount', { currency: row.currency }), width: '130px', align: 'right', mono: true, render: (l) => <span className={l.amount > 0 === (party !== 'vendor') ? 'ok' : 'bad'}>{signed(l.amount)}</span> },
+    { label: t(party === 'vendor' ? 'ledger.debtAfter' : 'ledger.balanceAfter', { currency: row.currency }), width: '150px', align: 'right', mono: true, render: (l) => money(l.balance_after) },
+    { label: t('ledger.reference'), width: '130px', mono: true, render: (l) => l.ref },
+    { label: t('ledger.note'), width: 'minmax(160px,1fr)', render: (l) => <span className="tx2">{l.note}</span> },
   ]
   return (
     <>
       <div className="toolbar">
-        <div className="grow tx2 pretty">Bakiye yalnızca buradaki kayıtlarla ve çağrı ücretleriyle değişir. Kayıtlar silinemez; hatalı kayıt düzeltme kaydıyla dengelenir.</div>
+        <div className="grow tx2 pretty">{t('ledger.help')}</div>
         {action}
       </div>
       <DataTable cols={cols} rows={rows} minWidth={860} loading={q.isPending} error={q.error as any} onRetry={q.refetch}
-        empty={{ title: 'Hesap hareketi yok', desc: 'Ödeme, düzeltme ve iade kayıtları burada listelenir.' }} />
+        empty={{ title: t('ledger.empty'), desc: t('ledger.emptyDesc') }} />
     </>
   )
 }
@@ -160,19 +161,19 @@ export function SipCode({ code }: { code: number }) {
 export function CallsTab({ filter }: { filter: Params }) {
   const list = usePaged('/v1/cdrs', filter, 15)
   const cols: Col<Row>[] = [
-    { label: 'Başlangıç', width: '150px', mono: true, render: (r) => dt(r.start_at) },
-    { label: 'Arayan', width: '120px', mono: true, render: (r) => r.src },
-    { label: 'Aranan', width: 'minmax(130px,1fr)', mono: true, render: (r) => r.dst },
-    { label: 'Süre sn', width: '70px', align: 'right', mono: true, render: (r) => r.duration_sec },
-    { label: 'SIP kodu', width: '170px', render: (r) => <SipCode code={r.sip_code} /> },
-    { label: 'Satış', width: '90px', align: 'right', mono: true, render: (r) => money(r.sell_amount, 4) },
-    { label: 'Alış', width: '90px', align: 'right', mono: true, render: (r) => money(r.buy_amount, 4) },
+    { label: t('calls.start'), width: '150px', mono: true, render: (r) => dt(r.start_at) },
+    { label: t('calls.src'), width: '120px', mono: true, render: (r) => r.src },
+    { label: t('calls.dst'), width: 'minmax(130px,1fr)', mono: true, render: (r) => r.dst },
+    { label: t('calls.duration'), width: '70px', align: 'right', mono: true, render: (r) => r.duration_sec },
+    { label: t('calls.sipCode'), width: '170px', render: (r) => <SipCode code={r.sip_code} /> },
+    { label: t('calls.sell'), width: '90px', align: 'right', mono: true, render: (r) => money(r.sell_amount, 4) },
+    { label: t('calls.buy'), width: '90px', align: 'right', mono: true, render: (r) => money(r.buy_amount, 4) },
   ]
   return (
     <>
       <DataTable cols={cols} rows={list.rows} minWidth={860} loading={list.loading} error={list.error} onRetry={list.refetch}
-        empty={{ title: 'Çağrı kaydı yok', desc: 'Bu tarafa ait çağrılar burada listelenir.' }} errorTitle="Çağrı kayıtları yüklenemedi" />
-      <Pager p={list} noun="çağrı" />
+        empty={{ title: t('calls.empty'), desc: t('calls.emptyDesc') }} errorTitle={t('calls.error')} />
+      <Pager p={list} noun={t('calls.noun')} />
     </>
   )
 }

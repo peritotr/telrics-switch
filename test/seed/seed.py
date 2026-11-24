@@ -40,28 +40,28 @@ rates(sell_eu, "44,0.0098,0,1,1\n49,0.0120,0,1,1\n33,0.0112,0,1,1\n34,0.0109,0,1
 
 vendors = {}
 for name, sheet, host in [
-    ("Turknet Transit", "90,0.0098\n9053,0.0118\n9054,0.0121\n9050,0.0116\n", "sbc1.turknet.example"),
-    ("Orbis Carrier", "90,0.0104\n9053,0.0112\n44,0.0071\n447,0.0128\n49,0.0086\n4915,0.0380\n33,0.0081\n1,0.0048\n", "gw.orbis.example"),
-    ("Telsat Global", "44,0.0068\n447,0.0131\n49,0.0090\n33,0.0079\n1,0.0051\n971,0.1420\n", "sip.telsat.example"),
+    ("Örnek Transit", "90,0.0098\n9053,0.0118\n9054,0.0121\n9050,0.0116\n", "sbc1.ornek-transit.example"),
+    ("Demo Carrier EU", "90,0.0104\n9053,0.0112\n44,0.0071\n447,0.0128\n49,0.0086\n4915,0.0380\n33,0.0081\n1,0.0048\n", "gw.demo-carrier.example"),
+    ("Demo Global Voice", "44,0.0068\n447,0.0131\n49,0.0090\n33,0.0079\n1,0.0051\n971,0.1420\n", "sip.demo-global.example"),
 ]:
     buy = post("/v1/tariffs", {"name": name + " alış", "kind": "buy"})["id"]
     rates(buy, "\n".join(line + ",0,1,1" for line in sheet.strip().split("\n")) + "\n")
     v = post("/v1/vendors", {"name": name, "tariff_id": buy, "email": "noc@" + host.split(".", 1)[1]})["id"]
-    conns = [post("/v1/vendor-connections", {"vendor_id": v, "name": f"{name.split()[0].lower()}-{s}", "host": host, "port": p, "transport": t, "max_calls": 2000, "max_cps": 100})["id"]
+    conns = [post("/v1/vendor-connections", {"vendor_id": v, "name": f"{host.split('.')[1]}-{s}", "host": host, "port": p, "transport": t, "max_calls": 2000, "max_cps": 100})["id"]
              for s, p, t in [("a", 5060, "udp"), ("b", 5061, "tls")]]
     vendors[name] = (v, conns)
 
 plan = post("/v1/routing-plans", {"name": "LCR-Global", "policy": "lcr"})["id"]
 post("/v1/routing-plans", {"name": "Öncelik-TR", "policy": "priority", "allow_loss": True})
-for prefix, names in {"90": ["Turknet Transit", "Orbis Carrier"], "44": ["Orbis Carrier", "Telsat Global"], "49": ["Orbis Carrier", "Telsat Global"],
-                      "33": ["Telsat Global", "Orbis Carrier"], "1": ["Orbis Carrier", "Telsat Global"], "971": ["Telsat Global"]}.items():
+for prefix, names in {"90": ["Örnek Transit", "Demo Carrier EU"], "44": ["Demo Carrier EU", "Demo Global Voice"], "49": ["Demo Carrier EU", "Demo Global Voice"],
+                      "33": ["Demo Global Voice", "Demo Carrier EU"], "1": ["Demo Carrier EU", "Demo Global Voice"], "971": ["Demo Global Voice"]}.items():
     for n, name in enumerate(names):
         post("/v1/routing-entries", {"routing_plan_id": plan, "prefix": prefix, "connection_id": vendors[name][1][0], "priority": 10 * (n + 1)})
 
 clients = []
 for n, (name, mode, limit, tariff, deposit) in enumerate([
-    ("Atlas Telekom A.Ş.", "prepaid", 0, sell, 12500), ("Bosphorus Carrier Ltd.", "postpaid", 25000, sell, 4000),
-    ("Meridian VoIP S.L.", "prepaid", 0, sell_eu, 1800), ("Pera Çağrı Merkezi", "prepaid", 0, sell, 350),
+    ("Örnek Telekom A.Ş.", "prepaid", 0, sell, 12500), ("Örnek Toptan Ses Ltd.", "postpaid", 25000, sell, 4000),
+    ("Demo VoIP S.L.", "prepaid", 0, sell_eu, 1800), ("Örnek Çağrı Merkezi", "prepaid", 0, sell, 350),
 ]):
     c = post("/v1/clients", {"name": name, "billing_mode": mode, "credit_limit": limit * 1_000_000, "tariff_id": tariff, "routing_plan_id": plan,
                              "max_calls": 600, "max_cps": 40, "email": f"noc@client{n + 1}.example", "tax_id": str(1234567890 + n)})["id"]
@@ -69,10 +69,10 @@ for n, (name, mode, limit, tariff, deposit) in enumerate([
     post("/v1/client-trunks", {"client_id": c, "name": "backup", "addresses": [f"198.51.100.{10 + n}"], "tech_prefix": "777"})
     post("/v1/payments", {"party_type": "client", "party_id": c, "amount": deposit * 1_000_000, "reference": f"HVL-{1000 + n}", "note": "Açılış ödemesi"})
     clients.append((c, tariff))
-post("/v1/clients", {"name": "Delta Carrier Services", "status": "suspended", "tariff_id": sell, "routing_plan_id": plan})
+post("/v1/clients", {"name": "Demo Carrier Services", "status": "suspended", "tariff_id": sell, "routing_plan_id": plan})
 
 dests = {sell: ["90532", "90533", "90542", "90505", "90212", "44207", "44791", "49151", "4930", "331", "1212", "97150"], sell_eu: ["44207", "4930", "331", "3491", "3906"]}
-route = {"90": "Turknet Transit", "44": "Orbis Carrier", "49": "Orbis Carrier", "33": "Telsat Global", "1": "Orbis Carrier", "97": "Telsat Global", "34": "Orbis Carrier", "39": "Orbis Carrier"}
+route = {"90": "Örnek Transit", "44": "Demo Carrier EU", "49": "Demo Carrier EU", "33": "Demo Global Voice", "1": "Demo Carrier EU", "97": "Demo Global Voice", "34": "Demo Carrier EU", "39": "Demo Carrier EU"}
 now = datetime.now(timezone.utc)
 batch, total = [], 0
 for i in range(2400):
@@ -93,5 +93,5 @@ for i in range(2400):
     if len(batch) == 400:
         total += post("/v1/cdrs", batch)["inserted"]
         batch = []
-post("/v1/payments", {"party_type": "vendor", "party_id": vendors["Orbis Carrier"][0], "amount": 5_000_000, "reference": "SWIFT-2291", "note": "Kısmi ödeme"})
+post("/v1/payments", {"party_type": "vendor", "party_id": vendors["Demo Carrier EU"][0], "amount": 5_000_000, "reference": "SWIFT-2291", "note": "Kısmi ödeme"})
 print(f"seeded: {len(clients) + 1} clients, {len(vendors)} vendors, {total} call records")

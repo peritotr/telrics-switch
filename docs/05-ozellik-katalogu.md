@@ -125,6 +125,7 @@ Bu bölümün tamamı Enterprise'dadır.
 | Çağrı izi: SIP iletilerinin saklanması, çağrı detayında SIP akışı, pcap indirme | Var | Kurulumun kendi toplayıcısı (HEP → ClickHouse, varsayılan 7 gün); panelde akış diyagramı ve Call-ID ile arama; canlı çağrılar satırından süren çağrının izine geçiş, "Yenile" ile o ana kadarki iletiler (T-25); pcap saklanan iletilerden üretilir (hat görüntüsü değil); parola özeti saklanmaz. Yalnızca sinyalleşme: ses kaydı yok. Müşterinin reddedilen çağrısı da izlenir (INVITE, ret, ACK; T-26); yabancı kaynakların istekleri izlenmez (`docs/10-izleme.md`) |
 | Dış iz toplayıcısına gönderim (HEP/Homer), Prometheus ölçüleri, alarmlar | Var | `HEP_TARGET`; ölçüler ve kurallar `docs/10-izleme.md`. Hazır gösterge paneli (Grafana) yok |
 | Dolandırıcılık tespiti | Yok (Enterprise) | Motorda genişleme noktaları hazır (`Adjust`, `OnLeg`) |
+| Yönetim panelinin dili: Türkçe ve İngilizce | Var | Varsayılan Türkçe; üst çubukta, girişte ve Ayarlar'da değişir, `?lang=en` ile açılır; sayı ve tarih biçimleri dile uyar. API hata iletileri İngilizce. Enterprise ekranları ve müşteri portalı şimdilik Türkçe (ADR-0049, `docs/07-panel.md` "Dil") |
 
 ## Sinyalleşme ve medya
 

@@ -132,6 +132,7 @@ Pazardaki ürünlerin çoğunda bulunan, operatörün sunucuya girmeden iş gör
 
 ### Yayın
 
+- Panelin İngilizce arayüzü **tamam** (2026-11-24, T-49, ADR-0049): bütün Community ekranları Türkçe ve İngilizce, varsayılan Türkçe; açık depodaki README ve ekran görüntüleri İngilizce olabilsin diye. **Kalan:** Enterprise ekranlarının ve müşteri portalının çevirisi (Enterprise deposu).
 - Community deposunun ilk açık sürümü için hazırlık **tamam** (2026-11-24): `README.md`, `CONTRIBUTING.md`, `SECURITY.md`. **Kalan:** CLA metni ve imza yolu.
 
 ### Önerilen sıra

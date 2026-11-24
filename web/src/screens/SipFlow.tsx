@@ -5,6 +5,8 @@
 import { useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { download, useGet, type ApiError } from '../lib/api'
+import { day, dec } from '../lib/format'
+import { getLang, t } from '../lib/i18n'
 import { PageHead, errorText, useUI } from '../ui/kit'
 
 interface Message { at: string; direction: string; transport: string; src_ip: string; src_port: number; dst_ip: string; dst_port: number; line: string; raw: string }
@@ -15,7 +17,8 @@ const micros = (at: string) => Date.parse(at.slice(0, 19) + 'Z') * 1000 + Number
 const p2 = (n: number) => String(n).padStart(2, '0')
 function stamp(at: string) {
   const d = new Date(at.slice(0, 19) + 'Z')
-  return `${p2(d.getUTCDate())}.${p2(d.getUTCMonth() + 1)}.${d.getUTCFullYear()} ${p2(d.getUTCHours())}:${p2(d.getUTCMinutes())}:${p2(d.getUTCSeconds())},${at.slice(20, 26)} UTC`
+  const point = getLang() === 'en' ? '.' : ','
+  return `${day(d)} ${p2(d.getUTCHours())}:${p2(d.getUTCMinutes())}:${p2(d.getUTCSeconds())}${point}${at.slice(20, 26)} UTC`
 }
 const endpoint = (ip: string, port: number) => (ip.includes(':') ? `[${ip}]:${port}` : `${ip}:${port}`)
 
@@ -39,7 +42,7 @@ function Ladder({ messages, compact, selected, onSelect }: { messages: Message[]
       if (m.direction === 'out') own.add(m.src_ip)
     }
     const caller = messages[0]?.src_ip
-    const roles = cols.map((ip) => (own.has(ip) ? 'Switch' : ip === caller ? 'Arayan' : 'Sağlayıcı'))
+    const roles = cols.map((ip) => (own.has(ip) ? t('trace.switch') : ip === caller ? t('trace.caller') : t('trace.vendor')))
     return { cols, roles }
   }, [messages])
   const gutter = 58, colW = compact ? 88 : 190, rowH = 34, head = 44
@@ -48,7 +51,7 @@ function Ladder({ messages, compact, selected, onSelect }: { messages: Message[]
   const t0 = messages.length ? micros(messages[0].at) : 0
   return (
     <div className="flow-scroll">
-      <svg className="flow" width={width} height={height} role="img" aria-label="SIP akışı">
+      <svg className="flow" width={width} height={height} role="img" aria-label={t('trace.flow')}>
         {cols.map((ip, i) => (
           <g key={ip}>
             <text x={x(ip)} y={16} textAnchor="middle" className="flow-role">{roles[i]}</text>
@@ -65,7 +68,7 @@ function Ladder({ messages, compact, selected, onSelect }: { messages: Message[]
           const room = Math.floor((Math.abs(end - a) - 14) / 6.6)
           const label = !compact || d.long.length <= room ? d.long : d.short
           const secure = m.transport === 'tls' || m.transport === 'wss'
-          const rel = ((micros(m.at) - t0) / 1e6).toFixed(3).replace('.', ',')
+          const rel = dec((micros(m.at) - t0) / 1e6, 3)
           return (
             <g key={i} className={'flow-row' + (selected === i ? ' sel' : '')} onClick={() => onSelect(selected === i ? null : i)}>
               <title>{`${m.line}\n${endpoint(m.src_ip, m.src_port)} → ${endpoint(m.dst_ip, m.dst_port)} · ${m.transport.toUpperCase()}`}</title>
@@ -91,27 +94,27 @@ export function SipFlow({ callId, compact }: { callId: string; compact?: boolean
   const [busy, setBusy] = useState(false)
   const ui = useUI()
   const err = q.error as ApiError | null
-  if (q.isPending) return <div className="tx3" style={{ padding: compact ? '4px 0' : '24px 16px', fontSize: 12 }}>Yükleniyor…</div>
+  if (q.isPending) return <div className="tx3" style={{ padding: compact ? '4px 0' : '24px 16px', fontSize: 12 }}>{t('kit.loading')}</div>
   if (err) {
-    const [title, desc] = err.status === 404 ? ['Çağrı bulunamadı', 'Bu Call-ID ile görebileceğiniz bir çağrı yok.']
-      : err.status === 503 ? ['Çağrı izleri okunamıyor', 'İz deposuna (ClickHouse) ulaşılamadı ya da bu kurulumda iz saklanmıyor.']
-      : ['Çağrı izi yüklenemedi', errorText(err)]
+    const [title, desc] = err.status === 404 ? [t('trace.notFound'), t('trace.notFoundDesc')]
+      : err.status === 503 ? [t('trace.unavailable'), t('trace.unavailableDesc')]
+      : [t('trace.error'), errorText(err)]
     return compact ? <div className="tx2">{title}. {desc}</div>
-      : <div className="state"><div className="t bad">{title}</div><div className="d">{desc}</div><button className="btn" onClick={() => q.refetch()}>Yeniden dene</button></div>
+      : <div className="state"><div className="t bad">{title}</div><div className="d">{desc}</div><button className="btn" onClick={() => q.refetch()}>{t('action.retry')}</button></div>
   }
   const trace = q.data!
   const messages = trace.messages
   // A call in progress is still being written (the collector stores about
   // once a second), so the wide view can be read again without leaving it.
-  const refresh = <button className="btn" disabled={q.isFetching} onClick={() => q.refetch()}>{q.isFetching ? 'Yenileniyor…' : 'Yenile'}</button>
+  const refresh = <button className="btn" disabled={q.isFetching} onClick={() => q.refetch()}>{q.isFetching ? t('trace.refreshing') : t('trace.refresh')}</button>
   if (!messages.length) {
-    const desc = 'Yalnızca bir sağlayıcıya gönderilen çağrıların iletileri saklanır; yönlendirme öncesinde reddedilenlerin ve saklama süresi dolanların izi yoktur.'
-    return compact ? <div className="tx2">Bu çağrı için saklanmış ileti yok. {desc}</div>
-      : <div className="state"><div className="t">Bu çağrı için saklanmış ileti yok</div><div className="d">{desc} Çağrı yeni kurulduysa iletileri birkaç saniye içinde görünür.</div>{refresh}</div>
+    const desc = t('trace.emptyWhy')
+    return compact ? <div className="tx2">{t('trace.empty')}. {desc}</div>
+      : <div className="state"><div className="t">{t('trace.empty')}</div><div className="d">{desc} {t('trace.emptyNew')}</div>{refresh}</div>
   }
   const selected = picked?.id === callId && picked.i < messages.length ? picked.i : null
   const m = selected == null ? null : messages[selected]
-  const span = ((micros(messages[messages.length - 1].at) - micros(messages[0].at)) / 1e6).toFixed(1).replace('.', ',')
+  const span = dec((micros(messages[messages.length - 1].at) - micros(messages[0].at)) / 1e6, 1)
   const pcap = async () => {
     setBusy(true)
     try {
@@ -121,21 +124,21 @@ export function SipFlow({ callId, compact }: { callId: string; compact?: boolean
   return (
     <div className={compact ? undefined : 'flow-wide'}>
       <div className="row" style={{ gap: 8, padding: compact ? '0 0 6px' : '12px 16px', borderBottom: compact ? undefined : '1px solid var(--line)' }}>
-        <span className="tx2 grow" style={{ fontSize: 12 }}>{messages.length} ileti · {span} sn{trace.truncated ? ' · yalnızca ilk 2.000 ileti' : ''}</span>
+        <span className="tx2 grow" style={{ fontSize: 12 }}>{t('trace.summary', { n: messages.length, s: span })}{trace.truncated ? t('trace.truncated') : ''}</span>
         {!compact && refresh}
-        {compact && <Link className="btn inline" style={{ display: 'inline-flex', alignItems: 'center' }} to={`/tools/trace?call_id=${encodeURIComponent(callId)}`}>Büyük görünüm</Link>}
-        <button className={compact ? 'btn inline' : 'btn'} disabled={busy} onClick={pcap} title="İletileri Wireshark ile açılabilen bir yakalama dosyası olarak indirir">{busy ? 'Hazırlanıyor…' : 'pcap indir'}</button>
+        {compact && <Link className="btn inline" style={{ display: 'inline-flex', alignItems: 'center' }} to={`/tools/trace?call_id=${encodeURIComponent(callId)}`}>{t('trace.wide')}</Link>}
+        <button className={compact ? 'btn inline' : 'btn'} disabled={busy} onClick={pcap} title={t('trace.pcapHint')}>{busy ? t('action.preparing') : t('trace.pcap')}</button>
       </div>
       <Ladder messages={messages} compact={compact} selected={selected} onSelect={(i) => setPicked(i == null ? null : { id: callId, i })} />
       {m ? (
         <div className="flow-raw" style={compact ? undefined : { margin: '0 16px 16px' }}>
           <div className="row" style={{ gap: 8, alignItems: 'baseline' }}>
             <span className="mono tx2 grow" style={{ fontSize: 11.5, overflowWrap: 'anywhere' }}>{stamp(m.at)} · {endpoint(m.src_ip, m.src_port)} → {endpoint(m.dst_ip, m.dst_port)} · {m.transport.toUpperCase()}</span>
-            <button className="btn inline" onClick={() => setPicked(null)}>Kapat</button>
+            <button className="btn inline" onClick={() => setPicked(null)}>{t('action.close')}</button>
           </div>
           <pre style={{ maxHeight: compact ? 280 : 420 }}>{m.raw}</pre>
         </div>
-      ) : <div className="tx3" style={{ fontSize: 11.5, padding: compact ? '4px 0 0' : '0 16px 14px' }}>Ham metnini görmek için bir iletiye tıklayın.</div>}
+      ) : <div className="tx3" style={{ fontSize: 11.5, padding: compact ? '4px 0 0' : '0 16px 14px' }}>{t('trace.clickHint')}</div>}
     </div>
   )
 }
@@ -150,16 +153,16 @@ export function CallTrace() {
   const go = () => setSearch(text.trim() ? { call_id: text.trim() } : {})
   return (
     <div className="page">
-      <PageHead title="Çağrı izi" desc="Bir çağrının SIP iletilerini, bütün rota denemeleriyle birlikte, switch'ten geçtikleri sırayla gösterir. TLS ile taşınan iletiler çözülmüş hâlleriyle yer alır; parola özetleri saklanmaz. Ses (RTP) kaydedilmez." />
+      <PageHead title={t('trace.title')} desc={t('trace.desc')} />
       <div className="card clip">
         <div className="toolbar">
-          <input className="input mono" style={{ flex: 1, minWidth: 240 }} placeholder="Call-ID (tam eşleşme)" value={text} autoFocus
+          <input className="input mono" style={{ flex: 1, minWidth: 240 }} placeholder={t('trace.placeholder')} value={text} autoFocus
             onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && go()} />
-          <button className="btn primary" disabled={!text.trim()} onClick={go}>İzi getir</button>
-          {id && <Link className="btn" style={{ display: 'inline-flex', alignItems: 'center' }} to={`/cdrs?call_id=${encodeURIComponent(id)}`}>Çağrı kaydı</Link>}
+          <button className="btn primary" disabled={!text.trim()} onClick={go}>{t('trace.fetch')}</button>
+          {id && <Link className="btn" style={{ display: 'inline-flex', alignItems: 'center' }} to={`/cdrs?call_id=${encodeURIComponent(id)}`}>{t('trace.cdr')}</Link>}
         </div>
         {id ? <SipFlow key={id} callId={id} />
-          : <div className="state"><div className="t">Call-ID ile arayın</div><div className="d">Call-ID'yi çağrı kayıtlarındaki çağrı detayından ya da müşterinin gönderdiği kayıttan alabilirsiniz. Çağrı detayındaki “SIP akışı” bölümü aynı izi gösterir.</div></div>}
+          : <div className="state"><div className="t">{t('trace.searchTitle')}</div><div className="d">{t('trace.searchDesc')}</div></div>}
       </div>
     </div>
   )

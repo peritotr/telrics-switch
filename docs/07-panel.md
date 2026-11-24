@@ -18,7 +18,9 @@ Giriş anahtarı ve laboratuvar kullanıcısı `test/seed/dev.env` içindedir; k
 |---|---|
 | `src/panel.tsx` | Kabuk, menü, rotalar; `createPanel(...extensions)` |
 | `src/lib/api.ts` | API istemcisi, sayfalı liste ve başvuru listesi kancaları |
-| `src/lib/format.ts` | Tutar, sayı, tarih biçimleri; tutar ayrıştırma |
+| `src/lib/format.ts` | Tutar, sayı, tarih biçimleri (dile uyar); tutar ayrıştırma |
+| `src/lib/i18n.tsx`, `src/lib/lang.ts` | Dil katmanı: `t`, `tx`, `rich`, dil seçimi ve bağlamı |
+| `src/i18n/` | Metin katalogları, alan başına bir dosya (Türkçe ve İngilizce yan yana); `scripts/check-i18n.ts` denetler |
 | `src/lib/session.tsx` | Oturum bağlamı ve `PanelExtension` arayüzü |
 | `src/ui/ui.css`, `src/ui/kit.tsx` | Tasarım belirteçleri ve ortak bileşenler |
 | `src/screens/` | Ekranlar |
@@ -29,7 +31,76 @@ Giriş, Genel bakış, Çağrı kayıtları, Canlı izleme, Canlı çağrılar, 
 
 ## Sürümler
 
-Community panelinde Enterprise özelliği hiçbir biçimde görünmez. Başka sürümlerin ekranları kendi depolarında yazılır ve `PanelExtension` ile eklenir: menü öğesi, rota, müşteri/sağlayıcı sekmesi, müşteri formuna bölüm, oturuma göre menü süzme (`filterNav`), üst çubuk içeriği (`topBar`) durum etiketleri (`addStatuses`) ve denetim kaydındaki kaynak, işlem ve ayrıntı adları (`addAuditLabels`, `addAuditDetails`; `screens/AuditLog.tsx`). Yeni bir eklenme noktası gerekiyorsa önce burada genel amaçlı olarak tanımlanır.
+Community panelinde Enterprise özelliği hiçbir biçimde görünmez. Başka sürümlerin ekranları kendi depolarında yazılır ve `PanelExtension` ile eklenir: metin kataloğu (`messages`; "Dil"), menü öğesi (grubu kimlikle: `monitoring`, `parties`, `pricing`, `numbers`, `tools`, `system`; eski Türkçe grup adları da geçer), rota, müşteri/sağlayıcı sekmesi, müşteri formuna bölüm, oturuma göre menü süzme (`filterNav`), üst çubuk içeriği (`topBar`) durum etiketleri (`addStatuses`) ve denetim kaydındaki kaynak, işlem ve ayrıntı adları (`addAuditLabels`, `addAuditDetails`; `screens/AuditLog.tsx`). Yeni bir eklenme noktası gerekiyorsa önce burada genel amaçlı olarak tanımlanır.
+
+## Dil
+
+Panel Türkçe (varsayılan) ve İngilizcedir (ADR-0049). Seçim: adresteki `?lang=en` ya da `?lang=tr` (seçilen hatırlanır; ekran görüntüsü otomasyonu bunu kullanır), üst çubuktaki TR/EN düğmesi, giriş sayfasındaki aynı düğme ya da Ayarlar › Görünüm › Dil. Tercih bu tarayıcıda `localStorage` `tsw.lang` olarak durur; tarayıcının kendi dili dikkate alınmaz. Dil değişince kabuk yeniden çizilir, açık sayfa yeniden kurulur (açık pencere kapanır, oturum ve adres kalır); `<html lang>` dile uyar.
+
+- **Metin yazmak:** her metin `src/i18n/<alan>.ts` içinde anahtarla, iki dilde birlikte. `en` nesnesi `Record<keyof typeof tr, string>` olduğu için eksik ya da fazla İngilizce metin `tsc`'yi düşürür. Yer tutucu `{ad}`; İngilizce çoğul `{n|call|calls}` (n 1 ise ilki). Ekranda `t('anahtar', { ad })`; öğe yerleştirmek için `rich`; çalışma anında bilinen anahtar ya da düz metin (uzantının etiketi) için `tx`. `t` modül yüklenirken çağrılmaz; etiket listeleri işlev olarak kurulur (geliştirme sunucusu konsolda uyarır).
+- **Denetim:** `npm run check-i18n` (Node 23.6+; `npm run build` de çalıştırır): iki dilde aynı anahtarlar, iki dosyada tanımlı anahtar yok, boş metin yok, yer tutucular aynı; kaynakta adı geçmeyen anahtarları uyarı olarak listeler (menü grup adları çalışma anında kurulduğu için listede görünür).
+- **Biçimler:** Türkçe `12.480,52`, `24.11.2026 14:05`; İngilizce `12,480.52`, `2026-11-24 14:05` (ISO 8601 sırası: İngiliz ve Amerikalı okur için aynı anlam, sütun genişliği aynı). Tutar girişi İngilizcede nokta ondalık, virgül binlik ayırıcıdır. CSV'deki tutarlar dilden bağımsız (nokta ondalık). Tarih-saat giriş kutularını tarayıcı kendi diliyle çizer.
+- **Sunucu metinleri:** API'nin hata iletileri İngilizcedir ve iki dilde de olduğu gibi gösterilir (bu yüzden Türkçe kipte de İngilizce görünür; eskiden de böyleydi). Panel kendi cümlelerini HTTP durumuna ve `code` alanına göre çevirir (`two_step_required`, tarife yükleme hata kodları).
+- **Uzantılar:** `PanelExtension.messages` (`{ tr, en? }`); İngilizcesi olmayan anahtar Türkçe görünür. Enterprise'ın menü, sekme, durum ve denetim adları çevrildi; Enterprise ekranları ve müşteri portalı şimdilik Türkçe (İngilizce kipte bu ekranlarda ortak bileşenlerin metinleri İngilizce, ekranın kendi metinleri Türkçe görünür).
+- **Bilinen sınırlar:** güvenlik duvarında "taşkın için kalıcı engel" notu, o anki dilde kurala veri olarak yazılır; CSV sütun adları API alan adlarıdır, çevrilmez; laboratuvar ve örnek veriler (adlar, notlar) Türkçe kalır.
+
+### İngilizce terim sözlüğü
+
+| Türkçe | İngilizce |
+|---|---|
+| Müşteri | Client |
+| Sağlayıcı | Vendor |
+| Sağlayıcı bağlantısı, bağlantı | Vendor connection, connection |
+| Taraflar (menü) | Partners |
+| Fiyat ve rota (menü) | Rating and routing |
+| Trunk | Trunk |
+| Tarife; alış tarifesi | Tariff; buy tariff |
+| Fiyat; dakika fiyatı | Rate; rate per minute |
+| Bağlantı ücreti; ilk süre; artım; ücretsiz süre | Connection fee; initial increment; billing increment; free period |
+| Geçerlilik başlangıcı / sonu | Effective from / until |
+| Yönlendirme planı; rota; politika | Routing plan; route; policy |
+| Zararına rota | Loss-making route |
+| Önek; teknik önek | Prefix; tech prefix |
+| Arayan numara; arayan numara kuralları | Caller ID (CLI); CLI rules |
+| Aranan | Called number |
+| Kimlik başlığı | Identity header (P-Asserted-Identity) |
+| Çağrı kaydı | CDR |
+| Eşzamanlı çağrı | Concurrent calls |
+| ASR, ACD, PDD, NER, CPS, LCR | aynı |
+| Yedek rotaya geçiş | Failover |
+| Ağırlık; öncelik | Weight; priority |
+| Çalma süresi; azami süre | Ring timeout; max duration |
+| Sağlayıcıyı yokla (OPTIONS); erişim | OPTIONS ping; reachability |
+| Taşıma; sunucu | Transport; host |
+| Kayıt (REGISTER) | Registration |
+| Digest doğrulama | Digest authentication |
+| Kodek çevirisi | Transcoding |
+| Paket dakika | Minute bundle |
+| Bakiye; kredi limiti | Balance; credit limit |
+| Ödeme; düzeltme; iade | Payment; adjustment; refund |
+| Hesap hareketleri | Transactions |
+| Sağlayıcıya borcumuz | Owed to the vendor |
+| Satış; alış; kâr; marj | Sell; buy; margin; margin % |
+| Gelir; maliyet | Revenue; cost |
+| Kur; para birimi | Exchange rate; currency |
+| Resmî tatil | Public holiday |
+| Rota simülatörü | Route simulator |
+| Canlı izleme; canlı çağrılar | Live monitor; live calls |
+| Konuşuyor; çalıyor; kuruluyor | Talking; ringing; setting up |
+| Kırılım; gün bazlı | Breakdown; by day |
+| Güvenlik duvarı; engel; engeli kaldır | Firewall; block; lift block |
+| Çağrı izi | Call trace |
+| Sistem kaynakları | System resources |
+| Düşük bakiye uyarısı; eşik | Low balance alert; threshold |
+| Zamanlanmış rapor | Scheduled report |
+| Denetim kaydı | Audit log |
+| Yönetici; salt okunur | Admin; read-only |
+| Oturum aç; oturumu kapat | Sign in; sign out |
+| İki adımlı doğrulama; yedek kod | Two-step verification; recovery code |
+| API anahtarı; iptal et | API key; revoke |
+| Gelişmiş ayarlar | Advanced settings |
+| Görünüm; tema; tablo yoğunluğu (Orta/Sıkı) | Appearance; theme; table density (Comfortable/Compact) |
+| Vazgeç | Cancel |
 
 ## Tasarımdan bilinçli sapmalar
 
@@ -90,6 +161,7 @@ Community panelinde Enterprise özelliği hiçbir biçimde görünmez. Başka s�
 | İki adımlı doğrulama | Kendi hesabının kurulumu Kullanıcılar ve roller ekranında bir kartta (ayrı bir "Hesabım" sayfası yok; "Parolamı değiştir" de bu ekranda). Kurulum penceresi: kare kod (beyaz zemin, iki temada da), elle girilecek anahtar, 6 haneli kod alanı; ardından bir kez gösterilen yedek kodlar ("kaydettim" işaretlenmeden kapanmaz). Kullanıcı tablosuna "İki adım" sütunu ve yöneticiye "İki adımı sıfırla" düğmesi eklendi. Giriş ekranına kod adımı eklendi ("Telefonuma ulaşamıyorum, yedek kod kullan" bağlantısıyla) | Tasarım paketinde yok (B7, 2026-11-22). Metinler ve akış Enterprise müşteri portalındaki iki adımlı doğrulamayla aynı tutuldu. Kare kod için `qrcode.react` (ISC lisansı, AGPL ile uyumlu) eklendi |
 | İki adımı zorunlu kılma (Ayarlar) | Ayarlar ekranında API anahtarlarının altında "Güvenlik" kartı: "İki adımlı doğrulama zorunlu" satırı, Açık/Kapalı etiketi, `Toggle` anahtarı ve ikinci adımı kurmamış etkin kullanıcı sayısı. Açmadan ve kapatmadan önce onay penceresi (açarken kurmamış kullanıcı sayısıyla). Kişinin kendi ikinci adımı kapalıysa anahtar kapalı kalır ve altında "Zorunlu kılmadan önce kendi hesabınızda açın" notu çıkar; salt okunur rolde anahtar pasif | Tasarım paketinde yok (T-23, 2026-11-23). Ayrı bir "Güvenlik" sayfası açılmadı; tek ayar için Ayarlar ekranı yeterli |
 | İki adım kurulum zorunluluğu (giriş sonrası) | Giriş ekranının çerçevesinde (`Frame`) "İki adımlı doğrulamayı kurun" sayfası: açıklama, oturumdaki e-posta, "Kurulumu başlat" (Kullanıcılar ekranındaki kurulum penceresinin aynısı), "Oturumu kapat". Panel açıkken ayar açılırsa ilk `two_step_required` cevabında oturum yeniden okunur ve bu sayfaya geçilir; kurulum bitince panel kendiliğinden açılır | Tasarım paketinde yok (T-23, 2026-11-23). Menü ve üst çubuk gösterilmez: sunucu kurulum dışındaki her isteği reddeder |
+| Dil seçimi | Üst çubukta saatin solunda küçük `Split` (TR / EN); giriş sayfasında marka satırının sağında aynısı; Ayarlar › Görünüm kartında "Dil" alanı (`Seg`: Türkçe / English). İngilizcede bazı dar sütunlar biraz genişletildi (satır sonundaki "Delete" düğmeleri 50 → 64 px, güvenlik duvarında "Block permanently" 120 → 130 px) | Tasarım paketinde yok (ADR-0049, 2026-11-24). Sayfa başlığı ve kalıcı yer olarak üst çubuk seçildi; girişten önce de değiştirilebilmeli |
 | Denetim kaydı: CSV indir | Başlığın sağında "CSV indir" düğmesi (Çağrı kayıtlarındaki gibi; liste boşken pasif, indirirken "Hazırlanıyor…"); dosya `denetim-kaydi.csv`, süzgeçler listeyle aynı. Sütun adları API'deki gibi İngilizce; `changes`/`detail` JSON metni | Tasarım paketinde yok (T-23, 2026-11-23). Sütunlar çevrilmedi: dosya başka araçlara (SIEM, tablo) girdi olarak düşünüldü |
 
 ## Geliştirme notu

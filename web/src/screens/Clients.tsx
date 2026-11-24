@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api, useGet, useInvalidate, useLookup, type Row } from '../lib/api'
 import { dt, money, moneyInput, parseMoney } from '../lib/format'
+import { rich, t, tx } from '../lib/i18n'
 import { useSession } from '../lib/session'
 import { Badge, DataTable, Field, FormModal, Modal, PageHead, Stat, StatusBadge, Tabs, Toggle, errorText, useUI, type Col } from '../ui/kit'
 import { CallsTab, LedgerTab, ListPage, PaymentModal, codecOptions, currencies, idOrNull, int, secondsError, text } from './common'
@@ -16,25 +17,25 @@ export function Clients() {
   const tariffs = useLookup('/v1/tariffs', { kind: 'sell' })
   const plans = useLookup('/v1/routing-plans')
   const cols: Col<Row>[] = [
-    { label: 'Ad', width: 'minmax(200px,1.6fr)', render: (r) => r.name },
-    { label: 'Faturalama', width: '100px', render: (r) => <span className="tx2">{billingLabel(r.billing_mode)}</span> },
-    { label: 'Kullanılabilir bakiye', width: '150px', align: 'right', mono: true, render: (r) => <span className={r.balance < 0 ? 'bad' : undefined}>{money(r.balance)} {r.currency}</span> },
-    { label: 'Kredi limiti', width: '130px', align: 'right', mono: true, render: (r) => money(r.credit_limit) },
-    { label: 'Tarife', width: 'minmax(140px,1fr)', render: (r) => tariffs.name(r.tariff_id) },
-    { label: 'Yönlendirme planı', width: 'minmax(130px,1fr)', render: (r) => plans.name(r.routing_plan_id) },
-    { label: 'Durum', width: '90px', render: (r) => <StatusBadge value={r.status} /> },
+    { label: t('clients.name'), width: 'minmax(200px,1.6fr)', render: (r) => r.name },
+    { label: t('clients.billing'), width: '100px', render: (r) => <span className="tx2">{billingLabel(r.billing_mode)}</span> },
+    { label: t('clients.balance'), width: '150px', align: 'right', mono: true, render: (r) => <span className={r.balance < 0 ? 'bad' : undefined}>{money(r.balance)} {r.currency}</span> },
+    { label: t('clients.creditLimit'), width: '130px', align: 'right', mono: true, render: (r) => money(r.credit_limit) },
+    { label: t('clients.tariff'), width: 'minmax(140px,1fr)', render: (r) => tariffs.name(r.tariff_id) },
+    { label: t('clients.plan'), width: 'minmax(130px,1fr)', render: (r) => plans.name(r.routing_plan_id) },
+    { label: t('clients.status'), width: '90px', render: (r) => <StatusBadge value={r.status} /> },
   ]
-  return <ListPage title="Müşteriler" desc="Trafik gönderen hesaplar. Bakiye, müşterinin harcayabileceği tutardır." path="/v1/clients" noun="müşteri"
+  return <ListPage title={t('clients.title')} desc={t('clients.desc')} path="/v1/clients" noun={t('clients.noun')}
     cols={cols} minWidth={1040} onRow={(r) => navigate(`/clients/${r.id}`)}
     add={{
-      label: 'Müşteri ekle', title: 'Müşteri ekle', sub: 'Trunk, limit ve iletişim bilgileri oluşturduktan sonra detay sayfasından girilir.',
+      label: t('clients.add'), title: t('clients.add'), sub: t('clients.addSub'),
       initial: { billing_mode: 'prepaid', currency: 'USD' },
       fields: [
-        { key: 'name', label: 'Ad', required: true, span: true },
-        { key: 'billing_mode', label: 'Faturalama türü', type: 'seg', options: billing },
-        { key: 'currency', label: 'Para birimi', type: 'seg', options: currencies },
-        { key: 'tariff_id', label: 'Tarife', type: 'select', options: tariffs.rows.map((t) => ({ value: String(t.id), label: t.name })) },
-        { key: 'routing_plan_id', label: 'Yönlendirme planı', type: 'select', options: plans.rows.map((t) => ({ value: String(t.id), label: t.name })) },
+        { key: 'name', label: t('clients.name'), required: true, span: true },
+        { key: 'billing_mode', label: t('clients.billingMode'), type: 'seg', options: billing },
+        { key: 'currency', label: t('clients.currency'), type: 'seg', options: currencies },
+        { key: 'tariff_id', label: t('clients.tariff'), type: 'select', options: tariffs.rows.map((r) => ({ value: String(r.id), label: r.name })) },
+        { key: 'routing_plan_id', label: t('clients.plan'), type: 'select', options: plans.rows.map((r) => ({ value: String(r.id), label: r.name })) },
       ],
       build: (v) => ({ name: text(v.name), billing_mode: v.billing_mode, currency: v.currency, tariff_id: idOrNull(v.tariff_id), routing_plan_id: idOrNull(v.routing_plan_id) }),
       done: (row) => navigate(`/clients/${row.id}`),
@@ -52,45 +53,45 @@ export function ClientDetail() {
   const ui = useUI()
   const invalidate = useInvalidate()
   const c = q.data
-  if (q.error) return <div className="page"><Link to="/clients" style={{ fontSize: 12 }}>← Müşteriler</Link><div className="banner bad">Müşteri yüklenemedi: {errorText(q.error as any)}</div></div>
-  if (!c) return <div className="tx3">Yükleniyor…</div>
+  if (q.error) return <div className="page"><Link to="/clients" style={{ fontSize: 12 }}>{t('clients.back')}</Link><div className="banner bad">{t('clients.loadFailed', { error: errorText(q.error as any) })}</div></div>
+  if (!c) return <div className="tx3">{t('kit.loading')}</div>
 
   const suspended = c.status !== 'active'
   const toggleStatus = async () => {
     const ok = await ui.confirm(suspended
-      ? { title: `${c.name} etkinleştirilsin mi?`, body: 'Müşterinin trunk\'larından gelen çağrılar yeniden kabul edilir.', action: 'Etkinleştir' }
-      : { title: `${c.name} askıya alınsın mı?`, body: 'Müşteri askıya alınınca tüm trunk\'larından gelen çağrılar SIP 403 ile reddedilir. Süren çağrılar etkilenmez.', action: 'Askıya al', danger: true })
+      ? { title: t('clients.activateTitle', { name: c.name }), body: t('clients.activateBody'), action: t('clients.activate') }
+      : { title: t('clients.suspendTitle', { name: c.name }), body: t('clients.suspendBody'), action: t('clients.suspend'), danger: true })
     if (!ok) return
     try {
       await api.patch(`/v1/clients/${id}`, { status: suspended ? 'active' : 'suspended' })
       invalidate('/v1/clients')
-      ui.toast(suspended ? 'Müşteri etkinleştirildi' : 'Müşteri askıya alındı')
+      ui.toast(suspended ? t('clients.activated') : t('clients.suspended'))
     } catch (e) { ui.toast(errorText(e as any)) }
   }
   const plan = plans.byId.get(c.routing_plan_id)
   const tariff = tariffs.byId.get(c.tariff_id)
   const extra = ext.flatMap((e) => e.clientTabs ?? [])
   const tabs = [
-    { value: 'genel', label: 'Genel' }, { value: 'trunk', label: "Trunk'lar" }, { value: 'bundles', label: 'Paket dakikalar' }, { value: 'ledger', label: 'Hesap hareketleri' }, { value: 'calls', label: 'Çağrı kayıtları' },
-    ...extra.map((t) => ({ value: t.key, label: t.label })),
+    { value: 'genel', label: t('clients.tabGeneral') }, { value: 'trunk', label: t('clients.tabTrunks') }, { value: 'bundles', label: t('clients.tabBundles') }, { value: 'ledger', label: t('clients.tabLedger') }, { value: 'calls', label: t('clients.tabCalls') },
+    ...extra.map((e) => ({ value: e.key, label: tx(e.label) })),
   ]
-  const payButton = canEdit && <button className="btn primary" onClick={() => setPaying(true)}>Ödeme ekle</button>
+  const payButton = canEdit && <button className="btn primary" onClick={() => setPaying(true)}>{t('clients.addPayment')}</button>
   return (
     <div className="page">
-      <PageHead back={<Link to="/clients" style={{ fontSize: 12 }}>← Müşteriler</Link>}
+      <PageHead back={<Link to="/clients" style={{ fontSize: 12 }}>{t('clients.back')}</Link>}
         title={<><h1>{c.name}</h1><StatusBadge value={c.status} /><span className="mono tx3" style={{ fontSize: 12 }}>ID {c.id}</span></>}>
         {canEdit && <div className="row">
-          <button className="btn" onClick={toggleStatus}>{suspended ? 'Etkinleştir' : 'Askıya al'}</button>
+          <button className="btn" onClick={toggleStatus}>{suspended ? t('clients.activate') : t('clients.suspend')}</button>
           {payButton}
         </div>}
       </PageHead>
       <div className="stats" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(170px,1fr))' }}>
-        <Stat label="Kullanılabilir bakiye" value={money(c.balance)} unit={c.currency} sub="Müşterinin harcayabileceği tutar" tone={c.balance < 0 ? 'bad' : undefined} />
-        <Stat label="Kredi limiti" value={money(c.credit_limit)} unit={c.currency}
-          sub={c.billing_mode === 'prepaid' ? "Prepaid · bakiye 0'da çağrı kesilir" : 'Postpaid · bakiye limite kadar eksiye inebilir'} />
-        <Stat text label="Tarife" value={tariff ? <Link to={`/tariffs/${tariff.id}`}>{tariff.name}</Link> : '—'} sub={tariff ? `Satış · ${tariff.currency}` : 'Tarife atanmadı; çağrılar reddedilir'} />
-        <Stat text label="Yönlendirme planı" value={plan ? <Link to={`/plans/${plan.id}`}>{plan.name}</Link> : '—'}
-          sub={plan ? `${plan.policy === 'lcr' ? 'LCR' : 'Öncelik'} · zararına rota ${plan.allow_loss ? 'izinli' : 'yasak'}` : 'Plan atanmadı; çağrılar reddedilir'} />
+        <Stat label={t('clients.balance')} value={money(c.balance)} unit={c.currency} sub={t('clients.balanceSub')} tone={c.balance < 0 ? 'bad' : undefined} />
+        <Stat label={t('clients.creditLimit')} value={money(c.credit_limit)} unit={c.currency}
+          sub={c.billing_mode === 'prepaid' ? t('clients.prepaidSub') : t('clients.postpaidSub')} />
+        <Stat text label={t('clients.tariff')} value={tariff ? <Link to={`/tariffs/${tariff.id}`}>{tariff.name}</Link> : '—'} sub={tariff ? t('clients.tariffSub', { currency: tariff.currency }) : t('clients.noTariff')} />
+        <Stat text label={t('clients.plan')} value={plan ? <Link to={`/plans/${plan.id}`}>{plan.name}</Link> : '—'}
+          sub={plan ? t('clients.planSub', { policy: plan.policy === 'lcr' ? 'LCR' : t('clients.priority'), loss: plan.allow_loss ? t('clients.lossAllowed') : t('clients.lossForbidden') }) : t('clients.noPlan')} />
       </div>
       <div className="card clip">
         <Tabs value={tab} tabs={tabs} onChange={setTab} />
@@ -122,11 +123,11 @@ function GeneralForm({ client, tariffs, plans }: { client: Row; tariffs: Row[]; 
   const bind = (k: string) => ({ value: v[k] ?? '', onChange: (e: { target: { value: string } }) => set(k, e.target.value) })
   const save = async () => {
     const limit = parseMoney(String(v.credit_limit))
-    if (!text(v.name)) return setError('Ad boş olamaz.')
-    if (limit == null || limit < 0) return setError('Kredi limiti eksi olmayan bir tutar olmalı.')
+    if (!text(v.name)) return setError(t('clients.errName'))
+    if (limit == null || limit < 0) return setError(t('clients.errLimit'))
     const lowText = String(v.low_balance ?? '').trim()
     const low = lowText === '' ? null : parseMoney(lowText)
-    if (lowText !== '' && low == null) return setError('Düşük bakiye eşiği geçerli bir tutar olmalı ya da boş bırakılmalı.')
+    if (lowText !== '' && low == null) return setError(t('clients.errLow'))
     const body: Row = {
       name: text(v.name), email: text(v.email), tax_id: text(v.tax_id), address: text(v.address), status: v.status,
       currency: v.currency, billing_mode: v.billing_mode, credit_limit: limit, tariff_id: idOrNull(v.tariff_id), routing_plan_id: idOrNull(v.routing_plan_id),
@@ -140,7 +141,7 @@ function GeneralForm({ client, tariffs, plans }: { client: Row; tariffs: Row[]; 
     try {
       await api.patch(`/v1/clients/${client.id}`, body)
       invalidate('/v1/clients')
-      ui.toast('Müşteri kaydedildi')
+      ui.toast(t('clients.saved'))
     } catch (e) { setError(errorText(e as any)) }
     setBusy(false)
   }
@@ -148,46 +149,46 @@ function GeneralForm({ client, tariffs, plans }: { client: Row; tariffs: Row[]; 
     <>
       <fieldset disabled={!canEdit}><div className="form-grid">
         <div className="form-col">
-          <div className="sect">Kimlik</div>
-          <Field label="Ad"><input className="input" {...bind('name')} /></Field>
-          <Field label="E-posta"><input className="input" {...bind('email')} /></Field>
-          <Field label="Vergi no"><input className="input mono" {...bind('tax_id')} /></Field>
-          <Field label="Adres"><textarea className="textarea" rows={2} {...bind('address')} /></Field>
-          <div className="field"><span className="label">Durum</span>
+          <div className="sect">{t('clients.identity')}</div>
+          <Field label={t('clients.name')}><input className="input" {...bind('name')} /></Field>
+          <Field label={t('clients.email')}><input className="input" {...bind('email')} /></Field>
+          <Field label={t('clients.taxId')}><input className="input mono" {...bind('tax_id')} /></Field>
+          <Field label={t('clients.address')}><textarea className="textarea" rows={2} {...bind('address')} /></Field>
+          <div className="field"><span className="label">{t('clients.status')}</span>
             <div className="row wrap" style={{ gap: 16 }}>
-              {[['active', 'Aktif'], ['suspended', 'Askıda'], ['closed', 'Kapalı']].map(([val, l]) =>
+              {[['active', t('status.active')], ['suspended', t('status.suspended')], ['closed', t('status.closed')]].map(([val, l]) =>
                 <label className="radio" key={val}><input type="radio" name="cst" checked={v.status === val} onChange={() => set('status', val)} />{l}</label>)}
             </div>
           </div>
         </div>
         <div className="form-col">
-          <div className="sect">Faturalama ve yönlendirme</div>
+          <div className="sect">{t('clients.billingRouting')}</div>
           <div className="grid2">
-            <Field label="Para birimi"><select className="select" {...bind('currency')}>{currencies.map((o) => <option key={o.value}>{o.value}</option>)}</select></Field>
-            <Field label="Faturalama türü"><select className="select" {...bind('billing_mode')}>{billing.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select></Field>
+            <Field label={t('clients.currency')}><select className="select" {...bind('currency')}>{currencies.map((o) => <option key={o.value}>{o.value}</option>)}</select></Field>
+            <Field label={t('clients.billingMode')}><select className="select" {...bind('billing_mode')}>{billing.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select></Field>
           </div>
-          <div className="field"><span className="label">Kullanılabilir bakiye</span>
+          <div className="field"><span className="label">{t('clients.balance')}</span>
             <div className="readonly-box">{money(client.balance)} {client.currency}</div>
-            <span className="hint">Elle düzenlenemez; yalnızca ödeme, düzeltme ve iade kaydıyla değişir.</span>
+            <span className="hint">{t('clients.balanceHint')}</span>
           </div>
-          <Field label={`Kredi limiti (${v.currency})`}><input className="input num" inputMode="decimal" {...bind('credit_limit')} /></Field>
-          <Field label={`Düşük bakiye eşiği (${v.currency})`} hint="Bakiye bu tutara ya da altına inince uyarı açılır. Boş = uyarı yok."><input className="input num" inputMode="decimal" {...bind('low_balance')} /></Field>
-          <Field label="Tarife"><select className="select" {...bind('tariff_id')}><option value="">—</option>{tariffs.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></Field>
-          <Field label="Yönlendirme planı"><select className="select" {...bind('routing_plan_id')}><option value="">—</option>{plans.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></Field>
+          <Field label={t('clients.creditLimitIn', { currency: v.currency })}><input className="input num" inputMode="decimal" {...bind('credit_limit')} /></Field>
+          <Field label={t('clients.lowBalance', { currency: v.currency })} hint={t('clients.lowBalanceHint')}><input className="input num" inputMode="decimal" {...bind('low_balance')} /></Field>
+          <Field label={t('clients.tariff')}><select className="select" {...bind('tariff_id')}><option value="">—</option>{tariffs.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}</select></Field>
+          <Field label={t('clients.plan')}><select className="select" {...bind('routing_plan_id')}><option value="">—</option>{plans.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}</select></Field>
         </div>
         <div className="form-col">
-          <div className="sect">Limitler</div>
+          <div className="sect">{t('clients.limits')}</div>
           <div className="grid2">
-            <Field label="Eşzamanlı çağrı limiti" hint="0 = sınırsız"><input className="input num" inputMode="numeric" {...bind('max_calls')} /></Field>
-            <Field label="CPS limiti" hint="0 = sınırsız"><input className="input num" inputMode="numeric" {...bind('max_cps')} /></Field>
+            <Field label={t('clients.maxCalls')} hint={t('clients.unlimited')}><input className="input num" inputMode="numeric" {...bind('max_calls')} /></Field>
+            <Field label={t('clients.maxCps')} hint={t('clients.unlimited')}><input className="input num" inputMode="numeric" {...bind('max_cps')} /></Field>
           </div>
           {ext.map((e, i) => e.clientForm && <div key={i} className="form-col">{e.clientForm({ values: v, set, disabled: !canEdit })}</div>)}
         </div>
       </div></fieldset>
       {error && <div className="banner bad" style={{ margin: '0 20px 12px' }}>{error}</div>}
       {canEdit && <div className="form-foot">
-        <button className="btn" onClick={() => { setV(initial()); setError('') }}>Vazgeç</button>
-        <button className="btn primary" disabled={busy} onClick={save}>Kaydet</button>
+        <button className="btn" onClick={() => { setV(initial()); setError('') }}>{t('action.cancel')}</button>
+        <button className="btn primary" disabled={busy} onClick={save}>{t('action.save')}</button>
       </div>}
     </>
   )
@@ -229,11 +230,11 @@ const numberRules = (v: Row): NumberRule[] => {
 // What is wrong with the rules typed by hand, if anything.
 const numberRulesError = (v: Row) => {
   const bad = otherLines(v).find((l) => { const m = ruleLine.exec(l); return !m || (m[1] === '' && m[2] === '') })
-  if (bad) return `“${bad}” okunamadı. Her satıra “silinecek > eklenecek” yazın (ör. 011 > 1 ya da > 90); en çok 8 rakam, silinecekte başta + olabilir.`
+  if (bad) return t('clients.errRuleLine', { line: bad })
   const rules = numberRules(v)
   const twice = rules.find((r, i) => rules.findIndex((o) => o.strip === r.strip) !== i)
-  if (twice) return twice.strip === '' ? 'Silinecek kısmı boş iki kural var.' : `“${twice.strip}” ile başlayan numaralar için iki kural var.`
-  return rules.length > 20 ? 'En çok 20 kural.' : undefined
+  if (twice) return twice.strip === '' ? t('clients.errRuleEmptyTwice') : t('clients.errRuleTwice', { prefix: twice.strip })
+  return rules.length > 20 ? t('clients.errRuleMax') : undefined
 }
 /** How many of a trunk's advanced settings are not as a new one comes. */
 const trunkSettings = (t: Row) => [t.security !== 'any', (t.max_contacts ?? 1) !== 1, t.tech_prefix !== '', numberForms(t).number_forms.length > 0, numberForms(t).number_other !== '',
@@ -246,7 +247,7 @@ function Trunks({ client }: { client: Row }) {
   // keeps it, and registrations come and go by themselves.
   const regs = useQuery({ queryKey: ['/v1/registrations', { client_id: client.id }],
     queryFn: () => api.get<{ registrations: Row[] }>('/v1/registrations', { client_id: client.id }), refetchInterval: 15000, retry: false })
-  const regsOf = (t: Row) => (regs.data?.registrations ?? []).filter((r) => r.trunk_id === t.id)
+  const regsOf = (tr: Row) => (regs.data?.registrations ?? []).filter((r) => r.trunk_id === tr.id)
   const [editing, setEditing] = useState<Row | 'new' | null>(null)
   const [issued, setIssued] = useState<Row | null>(null)
   const [shown, setShown] = useState<Row | null>(null)
@@ -254,26 +255,26 @@ function Trunks({ client }: { client: Row }) {
   const invalidate = useInvalidate()
   // A trunk that signs in has no password until one is issued; issuing
   // again replaces it, and only the newest is ever shown.
-  const issue = async (t: Row, renew: boolean) => {
-    if (renew && !(await ui.confirm({ title: `${t.name} için yeni parola üretilsin mi?`, body: 'Eski parola hemen geçersiz olur; müşterinin cihazı yeni parola girilene kadar çağrı gönderemez.', action: 'Yeni parola üret', danger: true }))) return
+  const issue = async (tr: Row, renew: boolean) => {
+    if (renew && !(await ui.confirm({ title: t('clients.renewTitle', { name: tr.name }), body: t('clients.renewBody'), action: t('clients.renew'), danger: true }))) return
     try {
-      setIssued(await api.post(`/v1/client-trunks/${t.id}/password`))
+      setIssued(await api.post(`/v1/client-trunks/${tr.id}/password`))
       invalidate('/v1/client-trunks')
     } catch (e) { ui.toast(errorText(e as any)) }
   }
-  const toggle = async (t: Row) => {
-    if (t.enabled && !(await ui.confirm({ title: `${t.name} kapatılsın mı?`, body: 'Trunk kapatılınca bu kaynaktan gelen yeni çağrılar reddedilir. Süren çağrılar etkilenmez.', action: 'Kapat', danger: true }))) return
+  const toggle = async (tr: Row) => {
+    if (tr.enabled && !(await ui.confirm({ title: t('clients.trunkOffTitle', { name: tr.name }), body: t('clients.trunkOffBody'), action: t('action.close'), danger: true }))) return
     try {
-      await api.patch(`/v1/client-trunks/${t.id}`, { enabled: !t.enabled })
+      await api.patch(`/v1/client-trunks/${tr.id}`, { enabled: !tr.enabled })
       invalidate('/v1/client-trunks')
     } catch (e) {
       const err = e as any
-      ui.toast(err?.status === 409 ? 'Açılamadı: adreslerinden biri aynı teknik önekle başka bir açık trunk\'ta kullanılıyor.' : errorText(err))
+      ui.toast(err?.status === 409 ? t('clients.trunkOnConflict') : errorText(err))
     }
   }
   // As many addresses as fit, and how many there are when there are several.
-  const addresses = (t: Row) => {
-    const list = (t.addresses as string[] | undefined) ?? []
+  const addresses = (tr: Row) => {
+    const list = (tr.addresses as string[] | undefined) ?? []
     if (list.length === 0) return '—'
     if (list.length === 1) return list[0]
     return <span className="row" style={{ gap: 6, minWidth: 0 }} title={list.join('\n')}>
@@ -282,97 +283,97 @@ function Trunks({ client }: { client: Row }) {
   }
   // Whether a trunk that signs in is registered right now; the details
   // open from the mark.
-  const registered = (t: Row) => {
+  const registered = (tr: Row) => {
     if (regs.isPending) return null
-    if (regs.error) return <span className="tx2" style={{ flex: 'none', fontFamily: 'var(--sans)' }} title={errorText(regs.error as any)}>kayıt bilinmiyor</span>
-    const list = regsOf(t)
-    if (list.length === 0) return <span className="tx2" style={{ flex: 'none', fontFamily: 'var(--sans)' }}>kayıtlı değil</span>
-    return <button className="btn inline" style={{ flex: 'none', fontFamily: 'var(--sans)' }} title={list.map((r) => `${r.src_ip}:${r.src_port}`).join('\n')} onClick={() => setShown(t)}>
-      <span className="ok">Kayıtlı</span>{list.length > 1 ? ` (${list.length})` : ''}</button>
+    if (regs.error) return <span className="tx2" style={{ flex: 'none', fontFamily: 'var(--sans)' }} title={errorText(regs.error as any)}>{t('clients.regUnknown')}</span>
+    const list = regsOf(tr)
+    if (list.length === 0) return <span className="tx2" style={{ flex: 'none', fontFamily: 'var(--sans)' }}>{t('clients.regNone')}</span>
+    return <button className="btn inline" style={{ flex: 'none', fontFamily: 'var(--sans)' }} title={list.map((r) => `${r.src_ip}:${r.src_port}`).join('\n')} onClick={() => setShown(tr)}>
+      <span className="ok">{t('clients.regYes')}</span>{list.length > 1 ? ` (${list.length})` : ''}</button>
   }
   const cols: Col<Row>[] = [
-    { label: 'Ad', width: '140px', mono: true, render: (t) => t.name },
-    { label: 'Kimlik doğrulama', width: '140px', render: (t) => <span className="tx2">{t.auth_type === 'ip' ? 'IP' : 'Kullanıcı adı / parola'}</span> },
-    { label: 'Adresler / kullanıcı', width: 'minmax(180px,1fr)', mono: true, render: (t) => (t.auth_type === 'ip' ? addresses(t)
-      : <span className="row" style={{ gap: 8, minWidth: 0 }}><span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.username}</span>{registered(t)}</span>) },
-    { label: 'Teknik önek', width: '100px', mono: true, render: (t) => t.tech_prefix || '—' },
-    { label: 'Şifreleme', width: '180px', render: (t) => t.security === 'cert' ? <span>Sertifika · <span className="mono">{t.tls_cert_name}</span></span>
-      : <span className="tx2">{t.security === 'tls' ? 'TLS zorunlu' : 'Serbest'}</span> },
-    { label: 'Gelişmiş ayar', width: '100px', render: (t) => (trunkSettings(t) ? <Badge tone="acc">{trunkSettings(t)} ayar</Badge> : <span className="tx3">varsayılan</span>) },
-    { label: '', width: '190px', align: 'right', render: (t) => <span className="row" style={{ gap: 10, justifyContent: 'flex-end' }}>
-      {canEdit && t.auth_type === 'digest' && <button className="btn inline" onClick={() => issue(t, true)}>Parola üret</button>}
-      {canEdit && <button className="btn inline" onClick={() => setEditing(t)}>Düzenle</button>}
-      <Toggle on={t.enabled} onChange={canEdit ? () => toggle(t) : undefined} /></span> },
+    { label: t('clients.name'), width: '140px', mono: true, render: (tr) => tr.name },
+    { label: t('clients.auth'), width: '140px', render: (tr) => <span className="tx2">{tr.auth_type === 'ip' ? 'IP' : t('clients.authDigest')}</span> },
+    { label: t('clients.addressesUser'), width: 'minmax(180px,1fr)', mono: true, render: (tr) => (tr.auth_type === 'ip' ? addresses(tr)
+      : <span className="row" style={{ gap: 8, minWidth: 0 }}><span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{tr.username}</span>{registered(tr)}</span>) },
+    { label: t('clients.techPrefix'), width: '100px', mono: true, render: (tr) => tr.tech_prefix || '—' },
+    { label: t('clients.encryption'), width: '180px', render: (tr) => tr.security === 'cert' ? <span>{t('clients.certificate')} · <span className="mono">{tr.tls_cert_name}</span></span>
+      : <span className="tx2">{tr.security === 'tls' ? t('clients.tlsRequired') : t('clients.open')}</span> },
+    { label: t('clients.advancedCol'), width: '100px', render: (tr) => (trunkSettings(tr) ? <Badge tone="acc">{t('clients.settingsCount', { n: trunkSettings(tr) })}</Badge> : <span className="tx3">{t('clients.default')}</span>) },
+    { label: '', width: '190px', align: 'right', render: (tr) => <span className="row" style={{ gap: 10, justifyContent: 'flex-end' }}>
+      {canEdit && tr.auth_type === 'digest' && <button className="btn inline" onClick={() => issue(tr, true)}>{t('clients.issuePassword')}</button>}
+      {canEdit && <button className="btn inline" onClick={() => setEditing(tr)}>{t('action.edit')}</button>}
+      <Toggle on={tr.enabled} onChange={canEdit ? () => toggle(tr) : undefined} /></span> },
   ]
   const adding = editing === 'new'
   const byAddress = (v: Row) => (adding ? v.auth_type !== 'digest' : (editing as Row).auth_type === 'ip')
   return (
     <>
       <div className="toolbar">
-        <div className="grow tx2">Çağrılar kaynak adres (tek IP ya da ağ) veya kullanıcı adı/parola ile bu trunk'lara eşlenir.</div>
-        {canEdit && <button className="btn" onClick={() => setEditing('new')}>Trunk ekle</button>}
+        <div className="grow tx2">{t('clients.trunksHelp')}</div>
+        {canEdit && <button className="btn" onClick={() => setEditing('new')}>{t('clients.addTrunk')}</button>}
       </div>
       <DataTable cols={cols} rows={q.data ?? []} minWidth={1120} loading={q.isPending} error={q.error as any} onRetry={q.refetch}
-        empty={{ title: 'Trunk yok', desc: 'Müşterinin çağrı gönderebilmesi için en az bir trunk gerekir.' }} />
-      {editing && <FormModal title={adding ? 'Trunk ekle' : 'Trunk\'ı düzenle'} action={adding ? 'Ekle' : 'Kaydet'} onClose={() => setEditing(null)}
-        sub={adding ? `${client.name} · sabit adresi olan müşteri IP ile, olmayan kullanıcı adı ve parolayla tanınır`
-          : `${client.name} · ${editing.auth_type === 'ip' ? 'kaynak adresiyle tanınır' : `kullanıcı adı ${editing.username}`}`}
+        empty={{ title: t('clients.noTrunks'), desc: t('clients.noTrunksDesc') }} />
+      {editing && <FormModal title={adding ? t('clients.addTrunk') : t('clients.editTrunk')} action={adding ? t('action.add') : t('action.save')} onClose={() => setEditing(null)}
+        sub={adding ? t('clients.trunkSubNew', { name: client.name })
+          : editing.auth_type === 'ip' ? t('clients.trunkSubIp', { name: client.name }) : t('clients.trunkSubUser', { name: client.name, user: editing.username })}
         width={640} defaults={trunkDefaults}
         initial={adding ? { auth_type: 'ip', ...trunkDefaults }
           : { name: editing.name, addresses: ((editing.addresses as string[] | undefined) ?? []).join('\n'), tech_prefix: editing.tech_prefix, security: editing.security, tls_cert_name: editing.tls_cert_name, max_contacts: editing.max_contacts ?? 1,
             ...numberForms(editing),
             max_duration_sec: String(editing.max_duration_sec), max_calls: String(editing.max_calls), max_cps: String(editing.max_cps), codecs: editing.codecs ?? [], transcode: !!editing.transcode }}
         fields={[
-          { key: 'name', label: 'Ad', type: 'mono', required: true },
-          { key: 'auth_type', label: 'Müşteri nasıl tanınır', type: 'seg', options: [{ value: 'ip', label: 'Kaynak IP' }, { value: 'digest', label: 'Kullanıcı adı ve parola' }], show: () => adding,
-            hint: 'Sabit IP adresi olan müşteri adresiyle, olmayan kullanıcı adı ve parolayla tanınır.' },
-          { key: 'addresses', label: 'Kaynak adresler', type: 'textarea', mono: true, rows: 3, required: true, span: true, placeholder: '203.0.113.10\n198.51.100.0/24\n2001:db8:12::/48', show: byAddress,
-            hint: 'Her satıra bir IP adresi ya da ağ (CIDR); virgülle de ayrılabilir. IPv4 ve IPv6. Bir kaynak birden çok trunk\'a uyuyorsa en dar ağ, eşitlikte en uzun teknik önek seçilir.' },
-          { key: 'username', label: 'Kullanıcı adı', type: 'mono', required: true, show: (v) => adding && v.auth_type === 'digest', hint: 'Sistem genelinde benzersiz olmalı. Parola eklendikten sonra üretilir ve bir kez gösterilir.' },
+          { key: 'name', label: t('clients.name'), type: 'mono', required: true },
+          { key: 'auth_type', label: t('clients.authType'), type: 'seg', options: [{ value: 'ip', label: t('clients.sourceIp') }, { value: 'digest', label: t('clients.userPassword') }], show: () => adding,
+            hint: t('clients.authTypeHint') },
+          { key: 'addresses', label: t('clients.addresses'), type: 'textarea', mono: true, rows: 3, required: true, span: true, placeholder: '203.0.113.10\n198.51.100.0/24\n2001:db8:12::/48', show: byAddress,
+            hint: t('clients.addressesHint') },
+          { key: 'username', label: t('clients.username'), type: 'mono', required: true, show: (v) => adding && v.auth_type === 'digest', hint: t('clients.usernameHint') },
 
-          { key: 's_security', label: 'Güvenlik', type: 'section', advanced: true },
-          { key: 'security', label: 'Şifreleme', type: 'seg', span: true, advanced: true, options: [{ value: 'any', label: 'Serbest' }, { value: 'tls', label: 'TLS zorunlu' }, { value: 'cert', label: 'TLS ve istemci sertifikası' }],
-            hint: 'Serbest: müşteri şifreli de şifresiz de bağlanabilir. Diğer seçenekler şifresiz gelen çağrıyı reddeder.' },
-          { key: 'tls_cert_name', label: 'Sertifikadaki ad', type: 'mono', required: true, span: true, advanced: true, placeholder: 'pbx.ornek.com', show: (v) => v.security === 'cert',
-            hint: 'Müşterinin sunduğu sertifikanın ortak adı (CN). Sertifika, sunucuda tanımlı istemci sertifika otoritesince imzalanmış olmalıdır; tanımlı değilse bu trunk çağrı kabul etmez.' },
-          { key: 'max_contacts', label: 'Kayıt sayısı', type: 'int', span: true, advanced: true, show: (v) => !byAddress(v),
-            hint: 'Trunk\'ın aynı anda kayıtlı (REGISTER) olabileceği adres sayısı, 1–10. Sınır dolunca en eski kayıt yenisine yer açar.' },
+          { key: 's_security', label: t('clients.security'), type: 'section', advanced: true },
+          { key: 'security', label: t('clients.encryption'), type: 'seg', span: true, advanced: true, options: [{ value: 'any', label: t('clients.open') }, { value: 'tls', label: t('clients.tlsRequired') }, { value: 'cert', label: t('clients.certAndTls') }],
+            hint: t('clients.securityHint') },
+          { key: 'tls_cert_name', label: t('clients.certName'), type: 'mono', required: true, span: true, advanced: true, placeholder: t('clients.certNamePlaceholder'), show: (v) => v.security === 'cert',
+            hint: t('clients.certNameHint') },
+          { key: 'max_contacts', label: t('clients.maxContacts'), type: 'int', span: true, advanced: true, show: (v) => !byAddress(v),
+            hint: t('clients.maxContactsHint') },
 
-          { key: 's_number', label: 'Numara biçimi', type: 'section', advanced: true, hint: 'Müşterinin aradığı numarayı nasıl yazdığı. Sistem numarayı tarifelerin kullandığı biçime (ülke koduyla, 905321112233 gibi) çevirir.' },
-          { key: 'tech_prefix', label: 'Teknik önek', type: 'mono', span: true, advanced: true, hint: 'Müşteri numaranın başına ayırt edici bir kod koyuyorsa buraya yazın: numaranın başında beklenir ve silinir. Çoğu müşteride boş kalır.' },
-          { key: 'number_forms', label: 'Müşteri numarayı nasıl gönderiyor', type: 'pick', span: true, advanced: true, options: [
-            { value: 'plus', label: 'Başında + ile (+905321112233)' }, { value: 'zeros', label: 'Başında 00 ile (00905321112233)' },
-            { value: 'national', label: 'Ülke kodu olmadan, başında 0 ile (05321112233)' }],
-            hint: 'Müşteri birden çok biçimde gönderiyorsa hepsini seçin. Hiçbiri seçili değilse numara ülke koduyla, olduğu gibi (905321112233) beklenir. Seçilen biçimlerle başlamayan numaralar olduğu gibi bırakılır; yanlış seçilirse çağrılar “hedef tarifede yok” diye reddedilir.' },
-          { key: 'number_add', label: 'Ülke kodu', type: 'mono', advanced: true, placeholder: '90', show: (v) => (v.number_forms ?? []).includes('national'), hint: 'Baştaki 0 silinir, yerine bu kod eklenir.' },
-          { key: 'number_other', label: 'Başka kurallar', type: 'textarea', mono: true, rows: 2, span: true, advanced: true, placeholder: '011 > 1\n> 90',
-            hint: 'Her satıra bir kural: “silinecek > eklenecek”. Numara silinecek kısımla başlıyorsa o kısım silinir, yerine eklenecek konur; silinecek boşsa (“> 90”) başka kurala uymayan her numaranın başına eklenir. Bir numaraya birden çok kural uyuyorsa en uzun silinecek kısmı olan uygulanır.' },
+          { key: 's_number', label: t('clients.numberFormat'), type: 'section', advanced: true, hint: t('clients.numberFormatHint') },
+          { key: 'tech_prefix', label: t('clients.techPrefix'), type: 'mono', span: true, advanced: true, hint: t('clients.techPrefixHint') },
+          { key: 'number_forms', label: t('clients.numberForms'), type: 'pick', span: true, advanced: true, options: [
+            { value: 'plus', label: t('clients.formPlus') }, { value: 'zeros', label: t('clients.formZeros') },
+            { value: 'national', label: t('clients.formNational') }],
+            hint: t('clients.numberFormsHint') },
+          { key: 'number_add', label: t('clients.countryCode'), type: 'mono', advanced: true, placeholder: '90', show: (v) => (v.number_forms ?? []).includes('national'), hint: t('clients.countryCodeHint') },
+          { key: 'number_other', label: t('clients.otherRules'), type: 'textarea', mono: true, rows: 2, span: true, advanced: true, placeholder: '011 > 1\n> 90',
+            hint: t('clients.otherRulesHint') },
 
-          { key: 's_limits', label: 'Süre ve limitler', type: 'section', advanced: true, hint: 'Müşterinin genel limitleri ayrıca geçerlidir; bunlar yalnızca bu trunk içindir.' },
-          { key: 'max_duration_sec', label: 'En uzun çağrı süresi (saniye)', type: 'int', span: true, advanced: true, hint: 'Bu trunk\'tan gelen çağrı bu süre dolunca kapatılır. 0 = ayrı sınır yok (bakiyenin yettiği kadar, en çok 2 saat).' },
-          { key: 'max_calls', label: 'Çağrı limiti', type: 'int', advanced: true, hint: 'Aynı anda sürebilecek çağrı sayısı. 0 = sınırsız.' },
-          { key: 'max_cps', label: 'CPS limiti', type: 'int', advanced: true, hint: 'Saniyede kabul edilecek yeni çağrı sayısı. 0 = sınırsız.' },
+          { key: 's_limits', label: t('clients.durationLimits'), type: 'section', advanced: true, hint: t('clients.durationLimitsHint') },
+          { key: 'max_duration_sec', label: t('clients.maxDuration'), type: 'int', span: true, advanced: true, hint: t('clients.maxDurationHint') },
+          { key: 'max_calls', label: t('clients.trunkMaxCalls'), type: 'int', advanced: true, hint: t('clients.trunkMaxCallsHint') },
+          { key: 'max_cps', label: t('clients.maxCps'), type: 'int', advanced: true, hint: t('clients.trunkMaxCpsHint') },
 
-          { key: 's_codecs', label: 'Ses kodekleri', type: 'section', advanced: true },
-          { key: 'codecs', label: 'Bu müşteriyle kullanılacak kodekler', type: 'pick', span: true, advanced: true, options: codecOptions,
-            hint: 'Müşterinin sunduklarından yalnızca seçtikleriniz, tıkladığınız sırayla sağlayıcıya teklif edilir; hiçbiri seçili değilse hepsi geçer (önerilen).' },
-          { key: 'transcode', label: 'Kodek çevirisi', type: 'check', span: true, advanced: true, text: 'Ortak kodek yoksa sesi çevir',
-            hint: 'Bu müşterinin kodekleriyle sağlayıcının kodekleri hiç örtüşmüyorsa çağrı yine de gönderilir; ses, sunucuda bir kodekten ötekine çevrilir. Yalnızca yukarıda kodek seçiliyse işe yarar. Çeviri sunucunun işlemcisini kullanır; aynı anda çevrilen çağrı sayısının bir sınırı vardır.' },
+          { key: 's_codecs', label: t('clients.audioCodecs'), type: 'section', advanced: true },
+          { key: 'codecs', label: t('clients.codecs'), type: 'pick', span: true, advanced: true, options: codecOptions(),
+            hint: t('clients.codecsHint') },
+          { key: 'transcode', label: t('clients.transcode'), type: 'check', span: true, advanced: true, text: t('clients.transcodeText'),
+            hint: t('clients.transcodeHint') },
         ]}
         validate={(v) => {
           const list = addressList(v.addresses)
           const bad = list.find((a) => !sourceAddress.test(a))
           return {
-            tech_prefix: /^\d*$/.test(v.tech_prefix ?? '') ? undefined : 'Yalnızca rakam.',
-            number_add: !(v.number_forms ?? []).includes('national') ? undefined : !v.number_add ? 'Ülke kodunu yazın (Türkiye için 90).' : /^\d{1,8}$/.test(v.number_add) ? undefined : 'En çok 8 rakam.',
+            tech_prefix: /^\d*$/.test(v.tech_prefix ?? '') ? undefined : t('clients.digitsOnly'),
+            number_add: !(v.number_forms ?? []).includes('national') ? undefined : !v.number_add ? t('clients.errCountry') : /^\d{1,8}$/.test(v.number_add) ? undefined : t('clients.errMax8'),
             number_other: numberRulesError(v),
             max_duration_sec: secondsError(v.max_duration_sec, 5, 7200),
-            max_calls: /^\d*$/.test(String(v.max_calls ?? '')) ? undefined : 'Yalnızca rakam.',
-            max_cps: /^\d*$/.test(String(v.max_cps ?? '')) ? undefined : 'Yalnızca rakam.',
-            max_contacts: byAddress(v) || (Number(v.max_contacts) >= 1 && Number(v.max_contacts) <= 10) ? undefined : '1 ile 10 arasında bir sayı.',
-            username: adding && v.auth_type === 'digest' && !/^[A-Za-z0-9._-]{3,64}$/.test(String(v.username ?? '')) ? 'Harf, rakam, nokta, tire ve alt çizgi; 3–64 karakter.' : undefined,
-            addresses: !byAddress(v) ? undefined : bad ? `“${bad}” bir IP adresi ya da ağ değil. Örnek: 203.0.113.10 ya da 198.51.100.0/24.`
-              : list.length > 200 ? 'En çok 200 adres.' : undefined,
+            max_calls: /^\d*$/.test(String(v.max_calls ?? '')) ? undefined : t('clients.digitsOnly'),
+            max_cps: /^\d*$/.test(String(v.max_cps ?? '')) ? undefined : t('clients.digitsOnly'),
+            max_contacts: byAddress(v) || (Number(v.max_contacts) >= 1 && Number(v.max_contacts) <= 10) ? undefined : t('clients.errContacts'),
+            username: adding && v.auth_type === 'digest' && !/^[A-Za-z0-9._-]{3,64}$/.test(String(v.username ?? '')) ? t('clients.errUsername') : undefined,
+            addresses: !byAddress(v) ? undefined : bad ? t('clients.errAddress', { address: bad })
+              : list.length > 200 ? t('clients.errAddressMax') : undefined,
           }
         }}
         onSubmit={async (v) => {
@@ -387,14 +388,14 @@ function Trunks({ client }: { client: Row }) {
               : await api.patch(`/v1/client-trunks/${editing.id}`, common)
           } catch (e) {
             const err = e as any
-            if (err?.status === 409 && !digest) throw new Error('Bu adreslerden biri aynı teknik önekle başka bir açık trunk\'ta kullanılıyor.')
-            if (err?.status === 422 && /number.rule/.test(String(err?.message))) throw new Error('Numara kuralları kabul edilmedi; “Başka kurallar” alanını denetleyin.')
-            if (err?.status === 422 && !digest) throw new Error('Adreslerden biri geçersiz ya da çok geniş bir ağ (IPv4\'te en çok /8, IPv6\'da en çok /16).')
+            if (err?.status === 409 && !digest) throw new Error(t('clients.errConflict'))
+            if (err?.status === 422 && /number.rule/.test(String(err?.message))) throw new Error(t('clients.errRules'))
+            if (err?.status === 422 && !digest) throw new Error(t('clients.errNetwork'))
             throw e
           }
           invalidate('/v1/client-trunks')
           setEditing(null)
-          ui.toast(adding ? 'Trunk eklendi' : 'Trunk güncellendi')
+          ui.toast(adding ? t('clients.trunkAdded') : t('clients.trunkUpdated'))
           if (adding && digest) issue(row, false)
         }} />}
       {issued && <TrunkPassword row={issued} onClose={() => setIssued(null)} />}
@@ -410,42 +411,42 @@ function TrunkRegistrations({ trunk, list, canEdit, onClose }: { trunk: Row; lis
   const ui = useUI()
   const invalidate = useInvalidate()
   const remove = async (r: Row) => {
-    if (!(await ui.confirm({ title: 'Kayıt silinsin mi?', body: `${trunk.name} trunk'ının ${r.src_ip} adresinden gelen kaydı silinir; trunk'a yönlendirilen çağrılar bu adrese gönderilmez. Cihaz yeniden kayıt olabilir. Süren çağrılar etkilenmez.`, action: 'Kaydı sil', danger: true }))) return
+    if (!(await ui.confirm({ title: t('clients.regDeleteTitle'), body: t('clients.regDeleteBody', { trunk: trunk.name, ip: r.src_ip }), action: t('clients.regDelete'), danger: true }))) return
     try {
       await api.del(`/v1/client-trunks/${trunk.id}/registrations?contact=${encodeURIComponent(r.contact)}`)
-      ui.toast('Kayıt silindi')
-    } catch (e) { ui.toast((e as any)?.status === 404 ? 'Kayıt zaten yok' : errorText(e as any)) }
+      ui.toast(t('clients.regDeleted'))
+    } catch (e) { ui.toast((e as any)?.status === 404 ? t('clients.regGone') : errorText(e as any)) }
     invalidate('/v1/registrations')
     if (list.length <= 1) onClose()
   }
   return (
     <Modal width={640} onClose={onClose}>
-      <div><div className="modal-title">Trunk kaydı</div><div className="tx2" style={{ marginTop: 2 }}><span className="mono">{trunk.name}</span> · kullanıcı adı <span className="mono">{trunk.username}</span> · en çok {trunk.max_contacts ?? 1} kayıt</div></div>
-      {list.length === 0 && <div className="tx2">Trunk şu an kayıtlı değil.</div>}
+      <div><div className="modal-title">{t('clients.regTitle')}</div><div className="tx2" style={{ marginTop: 2 }}>{rich('clients.regSub', { name: <span className="mono">{trunk.name}</span>, user: <span className="mono">{trunk.username}</span>, n: trunk.max_contacts ?? 1 })}</div></div>
+      {list.length === 0 && <div className="tx2">{t('clients.regNow')}</div>}
       {list.map((r) => (
         <div key={r.contact} style={{ border: '1px solid var(--line)', borderRadius: 8, padding: '12px 14px', display: 'grid', gap: 8 }}>
           <div className="row" style={{ gap: 8 }}>
             <span className="mono grow" style={{ fontWeight: 600 }}>{r.src_ip}:{r.src_port}</span>
             <Badge>{transportLabel(r.transport)}</Badge>
-            {r.nat && <Badge tone="acc">{r.transport === 'udp' ? 'NAT arkasında' : 'Bağlantı üzerinden'}</Badge>}
-            {canEdit && <button className="btn inline" onClick={() => remove(r)}>Kaydı sil</button>}
+            {r.nat && <Badge tone="acc">{r.transport === 'udp' ? t('clients.behindNat') : t('clients.overConnection')}</Badge>}
+            {canEdit && <button className="btn inline" onClick={() => remove(r)}>{t('clients.regDelete')}</button>}
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr', rowGap: 4 }}>
-            <span className="tx2">Bildirdiği adres</span><span className="mono" style={{ wordBreak: 'break-all' }}>{r.contact}</span>
-            <span className="tx2">İlk kayıt</span><span className="mono">{dt(r.since, true)}</span>
-            <span className="tx2">Geçerlilik sonu</span><span className="mono">{dt(r.until, true)}</span>
-            {r.user_agent && <><span className="tx2">Cihaz</span><span style={{ wordBreak: 'break-all' }}>{r.user_agent}</span></>}
+            <span className="tx2">{t('clients.contact')}</span><span className="mono" style={{ wordBreak: 'break-all' }}>{r.contact}</span>
+            <span className="tx2">{t('clients.since')}</span><span className="mono">{dt(r.since, true)}</span>
+            <span className="tx2">{t('clients.until')}</span><span className="mono">{dt(r.until, true)}</span>
+            {r.user_agent && <><span className="tx2">{t('clients.device')}</span><span style={{ wordBreak: 'break-all' }}>{r.user_agent}</span></>}
           </div>
         </div>
       ))}
-      <div className="tx2">Saatler UTC. Kayıt, cihaz yenilemedikçe geçerlilik sonunda kendiliğinden düşer; NAT arkasındaki ve bağlantı üzerinden ulaşılan cihazlardan kısa aralıklarla yeniden kayıt istenir.</div>
-      <div className="modal-foot"><button className="btn" onClick={onClose}>Kapat</button></div>
+      <div className="tx2">{t('clients.regHelp')}</div>
+      <div className="modal-foot"><button className="btn" onClick={onClose}>{t('action.close')}</button></div>
     </Modal>
   )
 }
 
 /** Seconds as the panel shows talk time: whole minutes, and the seconds over. */
-const talk = (sec: number) => (sec % 60 === 0 ? `${sec / 60} dk` : `${Math.floor(sec / 60)} dk ${sec % 60} sn`)
+const talk = (sec: number) => (sec % 60 === 0 ? t('clients.min', { m: sec / 60 }) : t('clients.minSec', { m: Math.floor(sec / 60), s: sec % 60 }))
 const prefixList = (v: any) => String(v ?? '').split(/[\s,;]+/).filter((p) => p !== '')
 
 /**
@@ -461,57 +462,57 @@ function Bundles({ client }: { client: Row }) {
   const ui = useUI()
   const invalidate = useInvalidate()
   const toggle = async (b: Row) => {
-    if (b.enabled && !(await ui.confirm({ title: `${b.name || 'Paket'} kapatılsın mı?`, body: 'Paket kapatılınca bu öneklere giden çağrılar tarifedeki fiyattan ücretlenir. Dönemin kullanımı silinmez.', action: 'Kapat', danger: true }))) return
+    if (b.enabled && !(await ui.confirm({ title: t('clients.bundleOffTitle', { name: b.name || t('clients.bundle') }), body: t('clients.bundleOffBody'), action: t('action.close'), danger: true }))) return
     try {
       await api.patch(`/v1/bundles/${b.id}`, { enabled: !b.enabled })
       invalidate(path)
     } catch (e) { ui.toast(errorText(e as any)) }
   }
   const remove = async (b: Row) => {
-    if (!(await ui.confirm({ title: `${b.name || 'Paket'} silinsin mi?`, body: 'Paketin kullanım sayaçları da silinir; geçmiş çağrı kayıtları değişmez.', action: 'Sil', danger: true }))) return
+    if (!(await ui.confirm({ title: t('clients.bundleDeleteTitle', { name: b.name || t('clients.bundle') }), body: t('clients.bundleDeleteBody'), action: t('action.delete'), danger: true }))) return
     try {
       await api.del(`/v1/bundles/${b.id}`)
       invalidate(path)
-      ui.toast('Paket silindi')
+      ui.toast(t('clients.bundleDeleted'))
     } catch (e) { ui.toast(errorText(e as any)) }
   }
   const cols: Col<Row>[] = [
-    { label: 'Ad', width: 'minmax(140px,1fr)', render: (b) => b.name || '—' },
-    { label: 'Önekler', width: 'minmax(160px,1.4fr)', mono: true, render: (b) => (b.prefixes as string[]).map((p) => p || 'tümü').join(', ') },
-    { label: 'Aylık süre', width: '110px', align: 'right', mono: true, render: (b) => talk(b.seconds) },
-    { label: 'Bu ay kullanılan', width: '140px', align: 'right', mono: true, render: (b) => talk(b.used_sec) },
-    { label: 'Kalan', width: '110px', align: 'right', mono: true, render: (b) => <span className={b.used_sec >= b.seconds ? 'bad' : undefined}>{talk(Math.max(b.seconds - b.used_sec, 0))}</span> },
-    { label: 'Durum', width: '90px', render: (b) => <Badge tone={b.enabled ? 'ok' : 'neutral'}>{b.enabled ? 'Açık' : 'Kapalı'}</Badge> },
+    { label: t('clients.name'), width: 'minmax(140px,1fr)', render: (b) => b.name || '—' },
+    { label: t('clients.prefixes'), width: 'minmax(160px,1.4fr)', mono: true, render: (b) => (b.prefixes as string[]).map((p) => p || t('clients.allPrefixes')).join(', ') },
+    { label: t('clients.monthly'), width: '110px', align: 'right', mono: true, render: (b) => talk(b.seconds) },
+    { label: t('clients.usedThisMonth'), width: '140px', align: 'right', mono: true, render: (b) => talk(b.used_sec) },
+    { label: t('clients.remaining'), width: '110px', align: 'right', mono: true, render: (b) => <span className={b.used_sec >= b.seconds ? 'bad' : undefined}>{talk(Math.max(b.seconds - b.used_sec, 0))}</span> },
+    { label: t('clients.status'), width: '90px', render: (b) => <Badge tone={b.enabled ? 'ok' : 'neutral'}>{b.enabled ? t('common.on') : t('common.off')}</Badge> },
     { label: '', width: '190px', align: 'right', render: (b) => <span className="row" style={{ gap: 10, justifyContent: 'flex-end' }}>
-      {canEdit && <button className="btn inline" onClick={() => setEditing(b)}>Düzenle</button>}
-      {canEdit && <button className="btn inline" onClick={() => remove(b)}>Sil</button>}
+      {canEdit && <button className="btn inline" onClick={() => setEditing(b)}>{t('action.edit')}</button>}
+      {canEdit && <button className="btn inline" onClick={() => remove(b)}>{t('action.delete')}</button>}
       <Toggle on={b.enabled} onChange={canEdit ? () => toggle(b) : undefined} /></span> },
   ]
   const period = q.data?.[0]?.period
   return (
     <>
       <div className="toolbar">
-        <div className="grow tx2">Paketteki süre her takvim ayında yenilenir; paket bitince çağrılar tarifedeki fiyattan ücretlenir.{period ? ` Dönem: ${period}.` : ''}</div>
-        {canEdit && <button className="btn" onClick={() => setEditing('new')}>Paket ekle</button>}
+        <div className="grow tx2">{t('clients.bundlesHelp')}{period ? t('clients.period', { period }) : ''}</div>
+        {canEdit && <button className="btn" onClick={() => setEditing('new')}>{t('clients.addBundle')}</button>}
       </div>
       <DataTable cols={cols} rows={q.data ?? []} minWidth={980} loading={q.isPending} error={q.error as any} onRetry={q.refetch}
-        empty={{ title: 'Paket yok', desc: 'Müşterinin bütün çağrıları tarifedeki fiyattan ücretlenir.' }} />
-      {editing && <FormModal title={editing === 'new' ? 'Paket ekle' : 'Paketi düzenle'} action={editing === 'new' ? 'Ekle' : 'Kaydet'} onClose={() => setEditing(null)}
-        sub={`${client.name} · süre, faturalanan saniye üzerinden düşülür; ay, tarifenin saat dilimine göre başlar`}
+        empty={{ title: t('clients.noBundles'), desc: t('clients.noBundlesDesc') }} />
+      {editing && <FormModal title={editing === 'new' ? t('clients.addBundle') : t('clients.editBundle')} action={editing === 'new' ? t('action.add') : t('action.save')} onClose={() => setEditing(null)}
+        sub={t('clients.bundleSub', { name: client.name })}
         initial={editing === 'new' ? {} : { name: editing.name, prefixes: (editing.prefixes as string[]).join(', '), minutes: String(Math.floor(editing.seconds / 60)), extra: String(editing.seconds % 60 || '') }}
         fields={[
-          { key: 'name', label: 'Ad', span: true, placeholder: 'Mobil 1000 dk' },
-          { key: 'prefixes', label: 'Önekler', type: 'mono', required: true, span: true, placeholder: '9053, 9054, 9055', hint: 'Virgülle ayrılmış hedef önekleri. Bir numara birden çok pakete uyuyorsa en uzun önekli paket kullanılır.' },
-          { key: 'minutes', label: 'Aylık süre (dakika)', type: 'int', required: true },
-          { key: 'extra', label: 'Ek saniye', type: 'int', placeholder: '0' },
+          { key: 'name', label: t('clients.name'), span: true, placeholder: t('clients.bundleNamePlaceholder') },
+          { key: 'prefixes', label: t('clients.prefixes'), type: 'mono', required: true, span: true, placeholder: '9053, 9054, 9055', hint: t('clients.prefixesHint') },
+          { key: 'minutes', label: t('clients.minutes'), type: 'int', required: true },
+          { key: 'extra', label: t('clients.extraSec'), type: 'int', placeholder: '0' },
         ]}
         validate={(v) => {
           const list = prefixList(v.prefixes)
           const sec = int(v.minutes) * 60 + int(v.extra)
           return {
-            prefixes: list.some((p) => !/^\d+$/.test(p)) ? 'Yalnızca rakam ve virgül.' : list.length > 200 ? 'En çok 200 önek.' : undefined,
-            minutes: /^\d*$/.test(String(v.minutes ?? '')) && sec > 0 && sec <= 2_000_000_000 ? undefined : 'Sıfırdan büyük bir süre girin.',
-            extra: /^\d*$/.test(String(v.extra ?? '')) && int(v.extra) < 60 ? undefined : '0–59 arası.',
+            prefixes: list.some((p) => !/^\d+$/.test(p)) ? t('clients.errPrefixes') : list.length > 200 ? t('clients.errPrefixMax') : undefined,
+            minutes: /^\d*$/.test(String(v.minutes ?? '')) && sec > 0 && sec <= 2_000_000_000 ? undefined : t('clients.errMinutes'),
+            extra: /^\d*$/.test(String(v.extra ?? '')) && int(v.extra) < 60 ? undefined : t('clients.errExtra'),
           }
         }}
         onSubmit={async (v) => {
@@ -520,7 +521,7 @@ function Bundles({ client }: { client: Row }) {
           else await api.patch(`/v1/bundles/${editing.id}`, body)
           invalidate(path)
           setEditing(null)
-          ui.toast(editing === 'new' ? 'Paket eklendi' : 'Paket güncellendi')
+          ui.toast(editing === 'new' ? t('clients.bundleAdded') : t('clients.bundleUpdated'))
         }} />}
     </>
   )
@@ -531,20 +532,20 @@ function TrunkPassword({ row, onClose }: { row: Row; onClose: () => void }) {
   const [saved, setSaved] = useState(false)
   const ui = useUI()
   const copy = async () => {
-    try { await navigator.clipboard.writeText(row.password); ui.toast('Parola panoya kopyalandı') } catch { ui.toast('Kopyalanamadı; parolayı elle seçip kopyalayın') }
+    try { await navigator.clipboard.writeText(row.password); ui.toast(t('clients.pwCopied')) } catch { ui.toast(t('clients.pwCopyFailed')) }
   }
   return (
     <Modal width={520}>
-      <div><div className="modal-title">Trunk parolası üretildi</div><div className="tx2" style={{ marginTop: 2 }}>Kullanıcı adı <span className="mono">{row.username}</span> · alan (realm) <span className="mono">{row.realm}</span></div></div>
+      <div><div className="modal-title">{t('clients.pwTitle')}</div><div className="tx2" style={{ marginTop: 2 }}>{rich('clients.pwSub', { user: <span className="mono">{row.username}</span>, realm: <span className="mono">{row.realm}</span> })}</div></div>
       <div className="banner warn" style={{ borderColor: 'color-mix(in oklch, var(--warn) 40%, transparent)' }}>
-        <span className="warn" style={{ fontWeight: 600 }}>Bu parola yalnızca şimdi gösterilir.</span> Pencere kapandıktan sonra bir daha görüntülenemez; kaybolursa yeni parola üretmeniz gerekir.
+        <span className="warn" style={{ fontWeight: 600 }}>{t('clients.pwOnce')}</span> {t('clients.pwOnceBody')}
       </div>
       <div className="row">
         <div className="grow mono" style={{ padding: '10px 12px', background: 'var(--panel2)', border: '1px solid var(--line)', borderRadius: 8, wordBreak: 'break-all' }}>{row.password}</div>
-        <button className="btn" onClick={copy}>Kopyala</button>
+        <button className="btn" onClick={copy}>{t('action.copy')}</button>
       </div>
-      <label className="radio"><input type="checkbox" checked={saved} onChange={(e) => setSaved(e.target.checked)} />Parolayı müşteriye güvenli bir yoldan ilettim</label>
-      <div className="modal-foot"><button className="btn primary" disabled={!saved} onClick={onClose}>Kapat</button></div>
+      <label className="radio"><input type="checkbox" checked={saved} onChange={(e) => setSaved(e.target.checked)} />{t('clients.pwSent')}</label>
+      <div className="modal-foot"><button className="btn primary" disabled={!saved} onClick={onClose}>{t('action.close')}</button></div>
     </Modal>
   )
 }

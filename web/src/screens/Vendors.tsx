@@ -3,30 +3,31 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api, useGet, useInvalidate, useLookup, type Row } from '../lib/api'
 import { money } from '../lib/format'
+import { t, tx } from '../lib/i18n'
 import { useSession } from '../lib/session'
 import { useQuery } from '@tanstack/react-query'
 import { Badge, DataTable, Field, FormModal, Modal, PageHead, Seg, Stat, StatusBadge, Tabs, Toggle, errorText, useUI, type Col, type FieldDef } from '../ui/kit'
 import { CallsTab, LedgerTab, ListPage, PaymentModal, codecOptions, currencies, idOrNull, int, secondsError, text } from './common'
 
-const transports = ['udp', 'tcp', 'tls'].map((t) => ({ value: t, label: t.toUpperCase() }))
+const transports = ['udp', 'tcp', 'tls'].map((x) => ({ value: x, label: x.toUpperCase() }))
 
 export function Vendors() {
   const navigate = useNavigate()
   const tariffs = useLookup('/v1/tariffs', { kind: 'buy' })
   const cols: Col<Row>[] = [
-    { label: 'Ad', width: 'minmax(220px,1.6fr)', render: (r) => r.name },
-    { label: 'Sağlayıcıya borcumuz', width: '170px', align: 'right', mono: true, render: (r) => `${money(r.balance)} ${r.currency}` },
-    { label: 'Alış tarifesi', width: 'minmax(160px,1fr)', render: (r) => tariffs.name(r.tariff_id) },
-    { label: 'Durum', width: '90px', render: (r) => <StatusBadge value={r.status} /> },
+    { label: t('vendors.name'), width: 'minmax(220px,1.6fr)', render: (r) => r.name },
+    { label: t('vendors.owed'), width: '170px', align: 'right', mono: true, render: (r) => `${money(r.balance)} ${r.currency}` },
+    { label: t('vendors.buyTariff'), width: 'minmax(160px,1fr)', render: (r) => tariffs.name(r.tariff_id) },
+    { label: t('vendors.status'), width: '90px', render: (r) => <StatusBadge value={r.status} /> },
   ]
-  return <ListPage title="Sağlayıcılar" desc="Trafiği taşıyan operatörler. Bakiye, sağlayıcıya olan borcumuzdur." path="/v1/vendors" noun="sağlayıcı"
+  return <ListPage title={t('vendors.title')} desc={t('vendors.desc')} path="/v1/vendors" noun={t('vendors.noun')}
     cols={cols} minWidth={760} onRow={(r) => navigate(`/vendors/${r.id}`)}
     add={{
-      label: 'Sağlayıcı ekle', title: 'Sağlayıcı ekle', sub: 'SIP bağlantıları oluşturduktan sonra detay sayfasından eklenir.', initial: { currency: 'USD' },
+      label: t('vendors.add'), title: t('vendors.add'), sub: t('vendors.addSub'), initial: { currency: 'USD' },
       fields: [
-        { key: 'name', label: 'Ad', required: true, span: true },
-        { key: 'currency', label: 'Para birimi', type: 'seg', options: currencies },
-        { key: 'tariff_id', label: 'Alış tarifesi', type: 'select', options: tariffs.rows.map((t) => ({ value: String(t.id), label: t.name })) },
+        { key: 'name', label: t('vendors.name'), required: true, span: true },
+        { key: 'currency', label: t('vendors.currency'), type: 'seg', options: currencies },
+        { key: 'tariff_id', label: t('vendors.buyTariff'), type: 'select', options: tariffs.rows.map((r) => ({ value: String(r.id), label: r.name })) },
       ],
       build: (v) => ({ name: text(v.name), currency: v.currency, tariff_id: idOrNull(v.tariff_id) }),
       done: (row) => navigate(`/vendors/${row.id}`),
@@ -42,25 +43,25 @@ export function VendorDetail() {
   const [tab, setTab] = useState('conn')
   const [paying, setPaying] = useState(false)
   const v = q.data
-  if (q.error) return <div className="page"><Link to="/vendors" style={{ fontSize: 12 }}>← Sağlayıcılar</Link><div className="banner bad">Sağlayıcı yüklenemedi: {errorText(q.error as any)}</div></div>
-  if (!v) return <div className="tx3">Yükleniyor…</div>
+  if (q.error) return <div className="page"><Link to="/vendors" style={{ fontSize: 12 }}>{t('vendors.back')}</Link><div className="banner bad">{t('vendors.loadFailed', { error: errorText(q.error as any) })}</div></div>
+  if (!v) return <div className="tx3">{t('kit.loading')}</div>
   const tariff = tariffs.byId.get(v.tariff_id)
   const extra = ext.flatMap((e) => e.vendorTabs ?? [])
   const tabs = [
-    { value: 'conn', label: 'Bağlantılar' }, { value: 'genel', label: 'Genel' }, { value: 'ledger', label: 'Hesap hareketleri' }, { value: 'calls', label: 'Çağrı kayıtları' },
-    ...extra.map((t) => ({ value: t.key, label: t.label })),
+    { value: 'conn', label: t('vendors.tabConnections') }, { value: 'genel', label: t('vendors.tabGeneral') }, { value: 'ledger', label: t('vendors.tabLedger') }, { value: 'calls', label: t('vendors.tabCalls') },
+    ...extra.map((e) => ({ value: e.key, label: tx(e.label) })),
   ]
-  const payButton = canEdit && <button className="btn primary" onClick={() => setPaying(true)}>Ödeme ekle</button>
+  const payButton = canEdit && <button className="btn primary" onClick={() => setPaying(true)}>{t('vendors.addPayment')}</button>
   return (
     <div className="page">
-      <PageHead back={<Link to="/vendors" style={{ fontSize: 12 }}>← Sağlayıcılar</Link>}
+      <PageHead back={<Link to="/vendors" style={{ fontSize: 12 }}>{t('vendors.back')}</Link>}
         title={<><h1>{v.name}</h1><StatusBadge value={v.status} /><span className="mono tx3" style={{ fontSize: 12 }}>ID {v.id}</span></>}>
         {payButton}
       </PageHead>
       <div className="stats" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))' }}>
-        <Stat label="Sağlayıcıya borcumuz" value={money(v.balance)} unit={v.currency} sub="Ödeme yaptıkça azalır" />
-        <Stat text label="Alış tarifesi" value={tariff ? <Link to={`/tariffs/${tariff.id}`}>{tariff.name}</Link> : '—'} sub={tariff ? `Alış · ${tariff.currency}` : 'Tarife atanmadı; maliyet 0 hesaplanır'} />
-        <Stat label="Bağlantı" value={conns.data?.length ?? '—'} sub={`${conns.data?.filter((c) => c.enabled).length ?? 0} açık`} />
+        <Stat label={t('vendors.owed')} value={money(v.balance)} unit={v.currency} sub={t('vendors.owedSub')} />
+        <Stat text label={t('vendors.buyTariff')} value={tariff ? <Link to={`/tariffs/${tariff.id}`}>{tariff.name}</Link> : '—'} sub={tariff ? t('vendors.tariffSub', { currency: tariff.currency }) : t('vendors.noTariff')} />
+        <Stat label={t('vendors.connection')} value={conns.data?.length ?? '—'} sub={t('vendors.enabledCount', { n: conns.data?.filter((c) => c.enabled).length ?? 0 })} />
       </div>
       <div className="card clip">
         <Tabs value={tab} tabs={tabs} onChange={setTab} />
@@ -84,72 +85,72 @@ const connDefaults = {
   register: false, register_expires_sec: '3600', register_domain: '',
 }
 const intervals = [0, 30, 60, 300]
-const intervalLabel = (sec: number) => (sec === 0 ? 'Yoklama' : sec % 60 === 0 ? `${sec / 60} dakikada bir` : `${sec} saniyede bir`)
+const intervalLabel = (sec: number) => (sec === 0 ? t('vendors.ping') : sec % 60 === 0 ? t('vendors.everyMin', { n: sec / 60 }) : t('vendors.everySec', { n: sec }))
 const codeList = (v: any) => String(v ?? '').split(/[\s,;]+/).filter((c) => c !== '')
 
 function connectionFields(row: Row | null): FieldDef[] {
   const every = [...new Set([...intervals, Number(row?.options_interval_sec ?? 0)])].sort((a, b) => a - b)
   const adv = (f: FieldDef): FieldDef => ({ ...f, advanced: true })
   return [
-    { key: 'name', label: 'Ad', type: 'mono', required: true },
-    { key: 'host', label: 'Sunucu', type: 'mono', required: true, placeholder: 'sip.example.net', hint: 'Sağlayıcının size verdiği alan adı ya da IP adresi.' },
-    { key: 'port', label: 'Port', type: 'int', required: true, hint: 'Sağlayıcı başka bir port söylemediyse 5060 (TLS için 5061).' },
-    { key: 'transport', label: 'Taşıma', type: 'seg', options: transports, hint: 'Sağlayıcı belirtmediyse UDP.' },
+    { key: 'name', label: t('vendors.name'), type: 'mono', required: true },
+    { key: 'host', label: t('vendors.host'), type: 'mono', required: true, placeholder: 'sip.example.net', hint: t('vendors.hostHint') },
+    { key: 'port', label: t('vendors.port'), type: 'int', required: true, hint: t('vendors.portHint') },
+    { key: 'transport', label: t('vendors.transport'), type: 'seg', options: transports, hint: t('vendors.transportHint') },
 
-    adv({ key: 's_number', label: 'Numara biçimi', type: 'section', hint: 'Aranan numaranın bu sağlayıcıya nasıl gönderileceği.' }),
-    adv({ key: 'strip_digits', label: 'Baştan silinecek hane', type: 'int', hint: 'Numaranın başından bu kadar hane silinir; önek ondan sonra eklenir.' }),
-    adv({ key: 'tech_prefix', label: 'Eklenecek önek', type: 'mono', hint: 'Sağlayıcı numaranın başında özel bir kod istiyorsa buraya yazın; çoğu sağlayıcıda boş kalır.' }),
-    adv({ key: 'number_plus', label: 'Artı işareti', type: 'check', span: true, text: 'Numarayı başında + ile gönder', hint: 'Sağlayıcı numarayı +905321112233 biçiminde istiyorsa işaretleyin.' }),
+    adv({ key: 's_number', label: t('vendors.numberFormat'), type: 'section', hint: t('vendors.numberFormatHint') }),
+    adv({ key: 'strip_digits', label: t('vendors.stripDigits'), type: 'int', hint: t('vendors.stripDigitsHint') }),
+    adv({ key: 'tech_prefix', label: t('vendors.techPrefix'), type: 'mono', hint: t('vendors.techPrefixHint') }),
+    adv({ key: 'number_plus', label: t('vendors.plus'), type: 'check', span: true, text: t('vendors.plusText'), hint: t('vendors.plusHint') }),
 
-    adv({ key: 's_caller', label: 'Arayan numara', type: 'section', hint: 'Bu sağlayıcıya gösterilecek arayan numara. Çağrı kaydında her zaman gelen numara durur.' }),
-    adv({ key: 'cli_strip_digits', label: 'Arayandan silinecek hane', type: 'int', hint: 'Arayan numaranın başından silinecek hane sayısı.' }),
-    adv({ key: 'cli_add_prefix', label: 'Arayana eklenecek önek', type: 'mono', placeholder: '+', hint: 'Sağlayıcı arayan numarayı başka biçimde istiyorsa (ör. başında + ya da 0). Boş = numara olduğu gibi gider.' }),
-    adv({ key: 'pai_mode', label: 'Kimlik başlığı', type: 'select', required: true, span: true, options: [
-      { value: 'pass', label: 'Olduğu gibi ilet (önerilen)' }, { value: 'remove', label: 'Sil' }, { value: 'caller', label: 'Arayan numarayla doldur' }],
-      hint: 'Bazı sağlayıcılar arayan numarayı bu ek başlıktan (P-Asserted-Identity) okur. Sağlayıcınız özellikle istemediyse dokunmayın.' }),
+    adv({ key: 's_caller', label: t('vendors.caller'), type: 'section', hint: t('vendors.callerHint') }),
+    adv({ key: 'cli_strip_digits', label: t('vendors.cliStrip'), type: 'int', hint: t('vendors.cliStripHint') }),
+    adv({ key: 'cli_add_prefix', label: t('vendors.cliAdd'), type: 'mono', placeholder: '+', hint: t('vendors.cliAddHint') }),
+    adv({ key: 'pai_mode', label: t('vendors.pai'), type: 'select', required: true, span: true, options: [
+      { value: 'pass', label: t('vendors.paiPass') }, { value: 'remove', label: t('vendors.paiRemove') }, { value: 'caller', label: t('vendors.paiCaller') }],
+      hint: t('vendors.paiHint') }),
 
-    adv({ key: 's_time', label: 'Süreler', type: 'section' }),
-    adv({ key: 'ring_timeout_sec', label: 'Çalma süresi sınırı (saniye)', type: 'int', hint: 'Karşı taraf bu süre içinde açmazsa sıradaki rota denenir. 0 = sistemin kendi sınırı (30 sn). Sağlayıcı çalarken ses kanalını açıp (183) hiç ses göndermezse çağrı en çok medya zaman aşımı kadar (varsayılan 60 sn) çalar.' }),
-    adv({ key: 'max_duration_sec', label: 'En uzun çağrı süresi (saniye)', type: 'int', hint: 'Bu bağlantıdan giden çağrı bu süre dolunca kapatılır. 0 = ayrı sınır yok (bakiyenin yettiği kadar, en çok 2 saat).' }),
+    adv({ key: 's_time', label: t('vendors.times'), type: 'section' }),
+    adv({ key: 'ring_timeout_sec', label: t('vendors.ringTimeout'), type: 'int', hint: t('vendors.ringTimeoutHint') }),
+    adv({ key: 'max_duration_sec', label: t('vendors.maxDuration'), type: 'int', hint: t('vendors.maxDurationHint') }),
 
-    adv({ key: 's_fail', label: 'Hata durumunda', type: 'section' }),
-    adv({ key: 'failover_mode', label: 'Sağlayıcı çağrıyı kuramazsa', type: 'select', required: true, span: true, options: [
-      { value: 'standard', label: 'Standart (önerilen): meşgul ya da yanlış numarada çağrı biter, diğer hatalarda sıradaki rota denenir' },
-      { value: 'always', label: 'Her hatada sıradaki rotayı dene' },
-      { value: 'never', label: 'Hiçbir hatada başka rota deneme' },
-      { value: 'custom', label: 'Hangi hata kodlarında deneneceğini ben yazacağım (uzman)' }],
-      hint: 'Arayan vazgeçerse çağrı her durumda biter.' }),
-    adv({ key: 'failover_codes', label: 'Sıradaki rotaya geçilecek SIP kodları', type: 'mono', span: true, placeholder: '408, 480, 500, 502, 503, 504', show: (v) => v.failover_mode === 'custom',
-      hint: 'Virgülle ayırın. Yalnızca bu kodlarla biten denemelerden sonra sıradaki rota denenir.' }),
+    adv({ key: 's_fail', label: t('vendors.onFailure'), type: 'section' }),
+    adv({ key: 'failover_mode', label: t('vendors.failover'), type: 'select', required: true, span: true, options: [
+      { value: 'standard', label: t('vendors.failStandard') },
+      { value: 'always', label: t('vendors.failAlways') },
+      { value: 'never', label: t('vendors.failNever') },
+      { value: 'custom', label: t('vendors.failCustom') }],
+      hint: t('vendors.failoverHint') }),
+    adv({ key: 'failover_codes', label: t('vendors.failCodes'), type: 'mono', span: true, placeholder: '408, 480, 500, 502, 503, 504', show: (v) => v.failover_mode === 'custom',
+      hint: t('vendors.failCodesHint') }),
 
-    adv({ key: 's_health', label: 'Erişilebilirlik denetimi', type: 'section' }),
-    adv({ key: 'options_interval_sec', label: 'Sağlayıcıyı yokla', type: 'select', required: true, span: true, options: every.map((n) => ({ value: String(n), label: intervalLabel(n) })),
-      hint: 'Açıkken sistem sağlayıcıya düzenli olarak “orada mısın?” diye sorar (SIP OPTIONS). Cevap vermeyen bağlantıya çağrı gönderilmez; cevap verince kendiliğinden geri alınır. Sağlayıcınız bu soruya cevap vermiyorsa kapalı bırakın: “Dene” düğmesiyle öğrenebilirsiniz.' }),
+    adv({ key: 's_health', label: t('vendors.health'), type: 'section' }),
+    adv({ key: 'options_interval_sec', label: t('vendors.options'), type: 'select', required: true, span: true, options: every.map((n) => ({ value: String(n), label: intervalLabel(n) })),
+      hint: t('vendors.optionsHint') }),
 
-    adv({ key: 's_codecs', label: 'Ses kodekleri', type: 'section' }),
-    adv({ key: 'codecs', label: 'Bu sağlayıcıya teklif edilecek kodekler', type: 'pick', span: true, options: codecOptions,
-      hint: 'Seçtikleriniz, tıkladığınız sırayla teklif edilir; hiçbiri seçili değilse arayanın sunduğu her kodek geçer (önerilen). Arayan bunlardan hiçbirini sunmuyorsa çağrı bu bağlantıya gönderilmez; aşağıdaki çeviri açıksa ve müşterinin trunk\'ında kodek seçiliyse gönderilir.' }),
-    adv({ key: 'transcode', label: 'Kodek çevirisi', type: 'check', span: true, text: 'Ortak kodek yoksa sesi çevir',
-      hint: 'Müşterinin trunk\'ında seçili kodeklerle bu listede hiç ortak kodek yoksa çağrı yine de bu bağlantıya gönderilir; ses, sunucuda bir kodekten ötekine çevrilir. Çeviri sunucunun işlemcisini kullanır; aynı anda çevrilen çağrı sayısının bir sınırı vardır, dolunca bu bağlantı o çağrı için atlanır.' }),
+    adv({ key: 's_codecs', label: t('vendors.audioCodecs'), type: 'section' }),
+    adv({ key: 'codecs', label: t('vendors.codecs'), type: 'pick', span: true, options: codecOptions(),
+      hint: t('vendors.codecsHint') }),
+    adv({ key: 'transcode', label: t('vendors.transcode'), type: 'check', span: true, text: t('vendors.transcodeText'),
+      hint: t('vendors.transcodeHint') }),
 
-    adv({ key: 's_signin', label: 'Sağlayıcıya giriş', type: 'section', hint: 'Çoğu sağlayıcı yalnızca IP adresinize bakar; kullanıcı adı ve parola verdiyse buraya girin.' }),
-    adv({ key: 'auth_username', label: 'Kullanıcı adı', type: 'mono' }),
-    adv({ key: 'auth_password', label: 'Parola', type: 'password', placeholder: row?.auth_set ? 'Kayıtlı; değiştirmek için yazın' : undefined,
-      hint: 'Şifreli saklanır ve bir daha gösterilmez.' }),
-    adv({ key: 'register', label: 'Kayıt', type: 'check', span: true, text: 'Sağlayıcıya kayıt ol (REGISTER)',
-      hint: 'Bazı sağlayıcılar çağrı kabul etmeden önce santralin kendilerine kaydolmasını ister. Açıkken sistem yukarıdaki kullanıcı adı ve parolayla kaydolur, süresi dolmadan yeniler; durum bağlantı listesindeki “Kayıt” sütununda görünür.' }),
-    adv({ key: 'register_expires_sec', label: 'Kayıt süresi (saniye)', type: 'int', show: (v) => !!v.register,
-      hint: 'Sağlayıcıdan istenen süre; sağlayıcı daha kısasını verebilir. 60–86400, çoğunlukla 3600.' }),
-    adv({ key: 'register_domain', label: 'Kayıt alanı', type: 'mono', placeholder: 'sip.example.net', show: (v) => !!v.register,
-      hint: 'Sağlayıcı kaydı sunucu adresinden başka bir alan adıyla istiyorsa (kullanıcı@alan). Boş = sunucu.' }),
+    adv({ key: 's_signin', label: t('vendors.signIn'), type: 'section', hint: t('vendors.signInHint') }),
+    adv({ key: 'auth_username', label: t('vendors.username'), type: 'mono' }),
+    adv({ key: 'auth_password', label: t('vendors.password'), type: 'password', placeholder: row?.auth_set ? t('vendors.passwordSet') : undefined,
+      hint: t('vendors.passwordHint') }),
+    adv({ key: 'register', label: t('vendors.register'), type: 'check', span: true, text: t('vendors.registerText'),
+      hint: t('vendors.registerHint') }),
+    adv({ key: 'register_expires_sec', label: t('vendors.registerExpires'), type: 'int', show: (v) => !!v.register,
+      hint: t('vendors.registerExpiresHint') }),
+    adv({ key: 'register_domain', label: t('vendors.registerDomain'), type: 'mono', placeholder: 'sip.example.net', show: (v) => !!v.register,
+      hint: t('vendors.registerDomainHint') }),
 
-    adv({ key: 's_limits', label: 'Limitler', type: 'section' }),
-    adv({ key: 'max_calls', label: 'Çağrı limiti', type: 'int', hint: 'Bu bağlantıda aynı anda sürebilecek çağrı sayısı. 0 = sınırsız.' }),
-    adv({ key: 'max_cps', label: 'CPS limiti', type: 'int', hint: 'Saniyede gönderilebilecek yeni çağrı sayısı. 0 = sınırsız.' }),
+    adv({ key: 's_limits', label: t('vendors.limits'), type: 'section' }),
+    adv({ key: 'max_calls', label: t('vendors.maxCalls'), type: 'int', hint: t('vendors.maxCallsHint') }),
+    adv({ key: 'max_cps', label: t('vendors.maxCps'), type: 'int', hint: t('vendors.maxCpsHint') }),
 
-    adv({ key: 's_cert', label: 'Sertifika', type: 'section', show: (v) => v.transport === 'tls' }),
-    adv({ key: 'tls_name', label: 'Sertifikadaki ad', type: 'mono', span: true, placeholder: 'sip.example.net', show: (v) => v.transport === 'tls',
-      hint: 'Sağlayıcının sertifikası bu ada düzenlenmiş olmalı. Boş = sunucu adı ya da adresi. Uymayan bağlantıya çağrı gönderilmez.' }),
+    adv({ key: 's_cert', label: t('vendors.certificate'), type: 'section', show: (v) => v.transport === 'tls' }),
+    adv({ key: 'tls_name', label: t('vendors.tlsName'), type: 'mono', span: true, placeholder: 'sip.example.net', show: (v) => v.transport === 'tls',
+      hint: t('vendors.tlsNameHint') }),
   ]
 }
 
@@ -163,7 +164,7 @@ function changedSettings(c: Row) {
 
 const ago = (iso: string) => {
   const sec = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 1000))
-  return sec < 90 ? `${sec} sn` : sec < 5400 ? `${Math.round(sec / 60)} dk` : `${Math.round(sec / 3600)} sa`
+  return sec < 90 ? t('vendors.sec', { n: sec }) : sec < 5400 ? t('vendors.min', { n: Math.round(sec / 60) }) : t('vendors.hour', { n: Math.round(sec / 3600) })
 }
 
 /** What one question to the vendor came to, in plain words. */
@@ -171,19 +172,19 @@ function probeText(r: Row): { tone: 'ok' | 'warn' | 'bad'; title: string; body: 
   const took = `${r.ms} ms`
   switch (r.outcome) {
     case 'answered':
-      if (r.sip_code >= 200 && r.sip_code < 300) return { tone: 'ok', title: `Sağlayıcı cevap verdi (${r.sip_code} ${r.sip_reason ?? ''}, ${took})`, body: 'Adres, port ve taşıma doğru; karşı taraf orada.' }
-      if (r.sip_code === 503) return { tone: 'bad', title: `Sağlayıcı hizmet dışı olduğunu bildirdi (503, ${took})`, body: 'Karşı taraf orada ama şu an çağrı almıyor. Yoklama açıksa bu bağlantıya çağrı gönderilmez.' }
-      return { tone: 'warn', title: `Sağlayıcı cevap verdi: ${r.sip_code} ${r.sip_reason ?? ''} (${took})`, body: 'Karşı taraf orada, ama bu soruyu olumlu cevaplamadı. Bazı sağlayıcılar yoklamayı böyle cevaplar ve çağrıları yine de alır; çağrılarınız da reddediliyorsa IP adresinizin sağlayıcıda tanımlı olduğunu denetleyin.' }
+      if (r.sip_code >= 200 && r.sip_code < 300) return { tone: 'ok', title: t('vendors.probeOk', { code: r.sip_code, reason: r.sip_reason ?? '', took }), body: t('vendors.probeOkBody') }
+      if (r.sip_code === 503) return { tone: 'bad', title: t('vendors.probe503', { took }), body: t('vendors.probe503Body') }
+      return { tone: 'warn', title: t('vendors.probeOther', { code: r.sip_code, reason: r.sip_reason ?? '', took }), body: t('vendors.probeOtherBody') }
     case 'no_answer':
-      return { tone: 'bad', title: `Cevap gelmedi (${Math.round(r.ms / 1000)} saniye beklendi)`, body: 'Adresi, portu ve taşımayı denetleyin. Bazı sağlayıcılar yoklamaya hiç cevap vermez; çağrılarınız çalışıyorsa bu bağlantıda “Sağlayıcıyı yokla” ayarını kapalı bırakın.' }
+      return { tone: 'bad', title: t('vendors.probeNoAnswer', { n: Math.round(r.ms / 1000) }), body: t('vendors.probeNoAnswerBody') }
     case 'unresolved':
-      return { tone: 'bad', title: 'Sunucu adı bulunamadı', body: '“Sunucu” alanındaki adı yazım hatası için denetleyin.' }
+      return { tone: 'bad', title: t('vendors.probeUnresolved'), body: t('vendors.probeUnresolvedBody') }
     case 'refused':
-      return { tone: 'bad', title: 'Bu adreste ve portta dinleyen yok', body: 'Bağlantı reddedildi. Portu ve taşımayı (UDP / TCP / TLS) denetleyin.' }
+      return { tone: 'bad', title: t('vendors.probeRefused'), body: t('vendors.probeRefusedBody') }
     case 'certificate':
-      return { tone: 'bad', title: 'Sağlayıcının sertifikası kabul edilmedi', body: `Gelişmiş ayarlardaki “Sertifikadaki ad” alanını denetleyin. Ayrıntı: ${r.detail ?? ''}` }
+      return { tone: 'bad', title: t('vendors.probeCert'), body: t('vendors.probeCertBody', { detail: r.detail ?? '' }) }
   }
-  return { tone: 'bad', title: 'Denenemedi', body: String(r.detail ?? '') }
+  return { tone: 'bad', title: t('vendors.probeFailed'), body: String(r.detail ?? '') }
 }
 
 /** "Bağlantıyı dene": asks the vendor once, now, and says what came back. */
@@ -201,18 +202,18 @@ function ConnectionTest({ conn, onClose }: { conn: Row; onClose: () => void }) {
   const said = result && probeText(result)
   return (
     <Modal width={520} onClose={onClose}>
-      <div><div className="modal-title">Bağlantıyı dene</div>
+      <div><div className="modal-title">{t('vendors.testTitle')}</div>
         <div className="tx2" style={{ marginTop: 2 }}><span className="mono">{conn.name}</span> · <span className="mono">{conn.host}:{conn.port}</span> · {String(conn.transport).toUpperCase()}</div></div>
-      {!result && !error && <div className="tx2">Sağlayıcıya soruluyor…</div>}
-      {error && <div className="banner bad">Deneme yapılamadı: {error}</div>}
+      {!result && !error && <div className="tx2">{t('vendors.asking')}</div>}
+      {error && <div className="banner bad">{t('vendors.testError', { error })}</div>}
       {said && <div style={{ display: 'grid', gap: 6 }}>
-        <div className="row" style={{ gap: 8 }}><Badge tone={said.tone}>{said.tone === 'ok' ? 'Çalışıyor' : said.tone === 'warn' ? 'Dikkat' : 'Sorun var'}</Badge><span style={{ fontWeight: 600 }}>{said.title}</span></div>
+        <div className="row" style={{ gap: 8 }}><Badge tone={said.tone}>{said.tone === 'ok' ? t('vendors.working') : said.tone === 'warn' ? t('vendors.attention') : t('vendors.problem')}</Badge><span style={{ fontWeight: 600 }}>{said.title}</span></div>
         <div className="tx2 pretty">{said.body}</div>
       </div>}
-      <div className="tx3 pretty" style={{ fontSize: 12 }}>Sistem sağlayıcıya tek bir “orada mısın?” sorusu (SIP OPTIONS) gönderir; çağrı kurulmaz, hiçbir ayar değişmez.</div>
+      <div className="tx3 pretty" style={{ fontSize: 12 }}>{t('vendors.testNote')}</div>
       <div className="modal-foot">
-        <button className="btn" disabled={!result && !error} onClick={() => setRound(round + 1)}>Yeniden dene</button>
-        <button className="btn primary" onClick={onClose}>Kapat</button>
+        <button className="btn" disabled={!result && !error} onClick={() => setRound(round + 1)}>{t('action.retry')}</button>
+        <button className="btn primary" onClick={onClose}>{t('action.close')}</button>
       </div>
     </Modal>
   )
@@ -229,7 +230,7 @@ function Connections({ vendor, rows, loading, error, retry }: { vendor: Row; row
   const health = useQuery({ queryKey: ['/v1/vendor-connections/health', { vendor_id: vendor.id }],
     queryFn: () => api.get<{ connections: Record<string, Row>; registrations?: Record<string, Row> }>('/v1/vendor-connections/health', { vendor_id: vendor.id }), refetchInterval: 15000, retry: false })
   const toggle = async (c: Row) => {
-    if (c.enabled && !(await ui.confirm({ title: `${c.name} kapatılsın mı?`, body: 'Bağlantı kapatılınca bu hedefe yeni çağrı gönderilmez; rota listesinde sıradaki bağlantı kullanılır.', action: 'Kapat', danger: true }))) return
+    if (c.enabled && !(await ui.confirm({ title: t('vendors.connOffTitle', { name: c.name }), body: t('vendors.connOffBody'), action: t('action.close'), danger: true }))) return
     try {
       await api.patch(`/v1/vendor-connections/${c.id}`, { enabled: !c.enabled })
       invalidate('/v1/vendor-connections')
@@ -237,44 +238,44 @@ function Connections({ vendor, rows, loading, error, retry }: { vendor: Row; row
   }
   const limit = (n: number) => (n ? n : '—')
   const reach = (c: Row) => {
-    if (!c.enabled || !c.options_interval_sec) return <span className="tx3">Denetlenmiyor</span>
-    if (health.isError) return <span className="tx3" title="Motor okunamadı">bilinmiyor</span>
+    if (!c.enabled || !c.options_interval_sec) return <span className="tx3">{t('vendors.notChecked')}</span>
+    if (health.isError) return <span className="tx3" title={t('vendors.engineUnreadable')}>{t('vendors.unknown')}</span>
     const h = health.data?.connections[String(c.id)]
-    if (!h || h.state === 'unknown') return <Badge>Denetleniyor</Badge>
+    if (!h || h.state === 'unknown') return <Badge>{t('vendors.checking')}</Badge>
     return h.state === 'up'
-      ? <span title={`Cevap veriyor (${ago(h.since)}); son cevap ${h.last?.sip_code ?? ''}, ${h.last?.ms ?? ''} ms`}><Badge tone="ok">Erişilebilir</Badge></span>
-      : <span title={`Cevap vermiyor (${ago(h.since)}); bu bağlantıya çağrı gönderilmiyor`}><Badge tone="bad">Cevap vermiyor</Badge></span>
+      ? <span title={t('vendors.upTitle', { ago: ago(h.since), code: h.last?.sip_code ?? '', ms: h.last?.ms ?? '' })}><Badge tone="ok">{t('vendors.up')}</Badge></span>
+      : <span title={t('vendors.downTitle', { ago: ago(h.since) })}><Badge tone="bad">{t('vendors.down')}</Badge></span>
   }
   // How the switch's registration with the vendor stands (T-14).
   const registration = (c: Row) => {
     if (!c.register) return <span className="tx3">—</span>
-    if (!c.enabled) return <span className="tx3">Kapalı</span>
-    if (!c.auth_username) return <span className="tx3" title="Kayıt için kullanıcı adı ve parola gerekli">Giriş bilgisi yok</span>
-    if (health.isError) return <span className="tx3" title="Motor okunamadı">bilinmiyor</span>
+    if (!c.enabled) return <span className="tx3">{t('vendors.regOff')}</span>
+    if (!c.auth_username) return <span className="tx3" title={t('vendors.regNeedsLogin')}>{t('vendors.regNoLogin')}</span>
+    if (health.isError) return <span className="tx3" title={t('vendors.engineUnreadable')}>{t('vendors.unknown')}</span>
     const r = health.data?.registrations?.[String(c.id)]
-    if (!r || r.state === 'pending') return <Badge>Kaydediliyor</Badge>
-    if (r.state === 'unknown') return <span className="tx3" title="SIP çekirdeğine sorulamadı">bilinmiyor</span>
-    if (r.state === 'registered') return <span title={`${ago(r.since)} önce kaydoldu; sağlayıcının verdiği süre ${r.expires} sn, süresi dolmadan yenilenir`}><Badge tone="ok">Kayıtlı</Badge></span>
+    if (!r || r.state === 'pending') return <Badge>{t('vendors.registering')}</Badge>
+    if (r.state === 'unknown') return <span className="tx3" title={t('vendors.coreUnreadable')}>{t('vendors.unknown')}</span>
+    if (r.state === 'registered') return <span title={t('vendors.registeredTitle', { ago: ago(r.since), n: r.expires })}><Badge tone="ok">{t('vendors.registered')}</Badge></span>
     const why: Record<string, string> = {
-      credentials: 'Sağlayıcı kullanıcı adını ya da parolayı kabul etmedi',
-      no_answer: 'Sağlayıcı kayıt isteğine cevap vermedi',
-      refused: 'Sağlayıcı kaydı reddetti',
+      credentials: t('vendors.whyCredentials'),
+      no_answer: t('vendors.whyNoAnswer'),
+      refused: t('vendors.whyRefused'),
     }
-    return <span title={`${why[r.reason] ?? 'Kayıt isteği gönderilemedi'} (${ago(r.since)}); sistem kısa aralıklarla yeniden dener`}><Badge tone="bad">{r.reason === 'credentials' ? 'Parola reddedildi' : 'Kayıt olmadı'}</Badge></span>
+    return <span title={t('vendors.regFailedTitle', { why: why[r.reason] ?? t('vendors.whyOther'), ago: ago(r.since) })}><Badge tone="bad">{r.reason === 'credentials' ? t('vendors.pwRejected') : t('vendors.notRegistered')}</Badge></span>
   }
   const cols: Col<Row>[] = [
-    { label: 'Ad', width: '130px', mono: true, render: (c) => c.name },
-    { label: 'Sunucu', width: 'minmax(170px,1fr)', mono: true, render: (c) => c.host },
-    { label: 'Port', width: '60px', align: 'right', mono: true, render: (c) => c.port },
-    { label: 'Taşıma', width: '70px', render: (c) => <span title={c.transport === 'tls' ? `Sertifikadaki ad: ${c.tls_name || c.host}` : undefined}>{String(c.transport).toUpperCase()}</span> },
-    { label: 'Çağrı limiti', width: '90px', align: 'right', mono: true, render: (c) => limit(c.max_calls) },
-    { label: 'CPS limiti', width: '80px', align: 'right', mono: true, render: (c) => limit(c.max_cps) },
-    { label: 'Erişim', width: '120px', render: reach },
-    { label: 'Kayıt', width: '130px', render: registration },
-    { label: 'Gelişmiş ayar', width: '100px', render: (c) => (changedSettings(c) ? <Badge tone="acc">{changedSettings(c)} ayar</Badge> : <span className="tx3">varsayılan</span>) },
+    { label: t('vendors.name'), width: '130px', mono: true, render: (c) => c.name },
+    { label: t('vendors.host'), width: 'minmax(170px,1fr)', mono: true, render: (c) => c.host },
+    { label: t('vendors.port'), width: '60px', align: 'right', mono: true, render: (c) => c.port },
+    { label: t('vendors.transport'), width: '70px', render: (c) => <span title={c.transport === 'tls' ? t('vendors.tlsNameTitle', { name: c.tls_name || c.host }) : undefined}>{String(c.transport).toUpperCase()}</span> },
+    { label: t('vendors.maxCalls'), width: '90px', align: 'right', mono: true, render: (c) => limit(c.max_calls) },
+    { label: t('vendors.maxCps'), width: '80px', align: 'right', mono: true, render: (c) => limit(c.max_cps) },
+    { label: t('vendors.reach'), width: '120px', render: reach },
+    { label: t('vendors.register'), width: '130px', render: registration },
+    { label: t('vendors.advanced'), width: '100px', render: (c) => (changedSettings(c) ? <Badge tone="acc">{t('vendors.settingsCount', { n: changedSettings(c) })}</Badge> : <span className="tx3">{t('vendors.default')}</span>) },
     { label: '', width: '170px', align: 'right', render: (c) => <span className="row" style={{ gap: 10, justifyContent: 'flex-end' }}>
-      {canEdit && <button className="btn inline" onClick={() => setTesting(c)}>Dene</button>}
-      {canEdit && <button className="btn inline" onClick={() => setEditing(c)}>Düzenle</button>}
+      {canEdit && <button className="btn inline" onClick={() => setTesting(c)}>{t('vendors.test')}</button>}
+      {canEdit && <button className="btn inline" onClick={() => setEditing(c)}>{t('action.edit')}</button>}
       <Toggle on={c.enabled} onChange={canEdit ? () => toggle(c) : undefined} /></span> },
   ]
   const adding = editing === 'new'
@@ -282,12 +283,12 @@ function Connections({ vendor, rows, loading, error, retry }: { vendor: Row; row
   return (
     <>
       <div className="toolbar">
-        <div className="grow tx2 pretty">Çağrılar bu SIP hedeflerine gönderilir. Ad, sunucu, port ve taşıma çoğu sağlayıcı için yeterlidir; gerisi “Gelişmiş ayarlar”dadır.</div>
-        {canEdit && <button className="btn primary" onClick={() => setEditing('new')}>Bağlantı ekle</button>}
+        <div className="grow tx2 pretty">{t('vendors.connHelp')}</div>
+        {canEdit && <button className="btn primary" onClick={() => setEditing('new')}>{t('vendors.addConn')}</button>}
       </div>
       <DataTable cols={cols} rows={rows} minWidth={1250} loading={loading} error={error} onRetry={retry}
-        empty={{ title: 'Bağlantı yok', desc: 'Bu sağlayıcıya çağrı gönderebilmek için en az bir SIP bağlantısı ekleyin.' }} />
-      {editing && <FormModal title={adding ? 'Bağlantı ekle' : 'Bağlantıyı düzenle'} sub={vendor.name} action={adding ? 'Ekle' : 'Kaydet'} width={640} onClose={() => setEditing(null)}
+        empty={{ title: t('vendors.noConn'), desc: t('vendors.noConnDesc') }} />
+      {editing && <FormModal title={adding ? t('vendors.addConn') : t('vendors.editConn')} sub={vendor.name} action={adding ? t('action.add') : t('action.save')} width={640} onClose={() => setEditing(null)}
         defaults={connDefaults}
         initial={row ? {
           name: row.name, host: row.host, port: String(row.port), transport: row.transport, tls_name: row.tls_name, tech_prefix: row.tech_prefix, strip_digits: String(row.strip_digits),
@@ -303,24 +304,24 @@ function Connections({ vendor, rows, loading, error, retry }: { vendor: Row; row
           const user = String(f.auth_username ?? '').trim()
           const renamed = !!row?.auth_set && user !== row.auth_username
           return {
-            port: int(f.port) >= 1 && int(f.port) <= 65535 ? undefined : '1–65535 arası bir port.',
-            strip_digits: /^\d*$/.test(String(f.strip_digits ?? '')) ? undefined : 'Yalnızca rakam.',
-            tech_prefix: /^[0-9#*]*$/.test(f.tech_prefix ?? '') ? undefined : 'Yalnızca rakam, # ve *.',
-            cli_strip_digits: /^\d*$/.test(String(f.cli_strip_digits ?? '')) && int(f.cli_strip_digits) <= 32 ? undefined : '0–32 arası bir sayı.',
-            cli_add_prefix: /^\+?\d{0,16}$/.test(f.cli_add_prefix ?? '') ? undefined : 'Yalnızca rakam; başında + olabilir.',
+            port: int(f.port) >= 1 && int(f.port) <= 65535 ? undefined : t('vendors.errPort'),
+            strip_digits: /^\d*$/.test(String(f.strip_digits ?? '')) ? undefined : t('vendors.digitsOnly'),
+            tech_prefix: /^[0-9#*]*$/.test(f.tech_prefix ?? '') ? undefined : t('vendors.errPrefix'),
+            cli_strip_digits: /^\d*$/.test(String(f.cli_strip_digits ?? '')) && int(f.cli_strip_digits) <= 32 ? undefined : t('vendors.errCliStrip'),
+            cli_add_prefix: /^\+?\d{0,16}$/.test(f.cli_add_prefix ?? '') ? undefined : t('vendors.errCliAdd'),
             ring_timeout_sec: secondsError(f.ring_timeout_sec, 5, 180),
             max_duration_sec: secondsError(f.max_duration_sec, 5, 7200),
             failover_codes: f.failover_mode !== 'custom' ? undefined
-              : codes.length === 0 ? 'En az bir kod yazın ya da başka bir seçenek seçin.'
-              : codes.some((c) => !/^[3-6]\d\d$/.test(c)) ? '300–699 arası SIP kodları, virgülle ayrılmış.' : undefined,
-            auth_username: /[\s"]/.test(user) ? 'Boşluk ve tırnak içeremez.' : undefined,
-            auth_password: user !== '' && !f.auth_password && (!row?.auth_set || renamed) ? (renamed ? 'Kullanıcı adını değiştirirken parolayı yeniden girin.' : 'Kullanıcı adı yazdıysanız parola da gerekli.')
-              : user === '' && f.auth_password ? 'Parola için kullanıcı adı da gerekli.' : undefined,
-            max_calls: /^\d*$/.test(String(f.max_calls ?? '')) ? undefined : 'Yalnızca rakam.',
-            max_cps: /^\d*$/.test(String(f.max_cps ?? '')) ? undefined : 'Yalnızca rakam.',
-            register: f.register && user === '' ? 'Kayıt için yukarıya kullanıcı adı ve parola girin.' : undefined,
-            register_expires_sec: !f.register || (/^\d+$/.test(String(f.register_expires_sec ?? '')) && int(f.register_expires_sec) >= 60 && int(f.register_expires_sec) <= 86400) ? undefined : '60–86400 arası bir sayı.',
-            register_domain: !f.register || /^[A-Za-z0-9.-]{0,253}$/.test(String(f.register_domain ?? '').trim()) ? undefined : 'Alan adı ya da IPv4 adresi.',
+              : codes.length === 0 ? t('vendors.errCodesEmpty')
+              : codes.some((c) => !/^[3-6]\d\d$/.test(c)) ? t('vendors.errCodes') : undefined,
+            auth_username: /[\s"]/.test(user) ? t('vendors.errUser') : undefined,
+            auth_password: user !== '' && !f.auth_password && (!row?.auth_set || renamed) ? (renamed ? t('vendors.errRenamed') : t('vendors.errNeedPw'))
+              : user === '' && f.auth_password ? t('vendors.errNeedUser') : undefined,
+            max_calls: /^\d*$/.test(String(f.max_calls ?? '')) ? undefined : t('vendors.digitsOnly'),
+            max_cps: /^\d*$/.test(String(f.max_cps ?? '')) ? undefined : t('vendors.digitsOnly'),
+            register: f.register && user === '' ? t('vendors.errRegister') : undefined,
+            register_expires_sec: !f.register || (/^\d+$/.test(String(f.register_expires_sec ?? '')) && int(f.register_expires_sec) >= 60 && int(f.register_expires_sec) <= 86400) ? undefined : t('vendors.errExpires'),
+            register_domain: !f.register || /^[A-Za-z0-9.-]{0,253}$/.test(String(f.register_domain ?? '').trim()) ? undefined : t('vendors.errDomain'),
           }
         }}
         onSubmit={async (f) => {
@@ -346,12 +347,12 @@ function Connections({ vendor, rows, loading, error, retry }: { vendor: Row; row
             // sending it again cannot add a second one.
             invalidate('/v1/vendor-connections')
             setEditing(null)
-            ui.toast(`Bağlantı kaydedildi, ama giriş bilgileri kaydedilemedi: ${errorText(e as any)}`)
+            ui.toast(t('vendors.signInFailed', { error: errorText(e as any) }))
             return
           }
           invalidate('/v1/vendor-connections')
           setEditing(null)
-          ui.toast(adding ? 'Bağlantı eklendi' : 'Bağlantı güncellendi')
+          ui.toast(adding ? t('vendors.connAdded') : t('vendors.connUpdated'))
         }} />}
       {testing && <ConnectionTest conn={testing} onClose={() => setTesting(null)} />}
     </>
@@ -370,7 +371,7 @@ function GeneralForm({ vendor, tariffs }: { vendor: Row; tariffs: Row[] }) {
   const set = (k: string, val: any) => setV((old) => ({ ...old, [k]: val }))
   const bind = (k: string) => ({ value: v[k] ?? '', onChange: (e: { target: { value: string } }) => set(k, e.target.value) })
   const save = async () => {
-    if (!text(v.name)) return setError('Ad boş olamaz.')
+    if (!text(v.name)) return setError(t('vendors.errName'))
     setBusy(true)
     setError('')
     try {
@@ -378,7 +379,7 @@ function GeneralForm({ vendor, tariffs }: { vendor: Row; tariffs: Row[] }) {
         name: text(v.name), email: text(v.email), tax_id: text(v.tax_id), address: text(v.address), currency: v.currency, status: v.status, tariff_id: idOrNull(v.tariff_id),
       })
       invalidate('/v1/vendors')
-      ui.toast('Sağlayıcı kaydedildi')
+      ui.toast(t('vendors.saved'))
     } catch (e) { setError(errorText(e as any)) }
     setBusy(false)
   }
@@ -386,27 +387,27 @@ function GeneralForm({ vendor, tariffs }: { vendor: Row; tariffs: Row[] }) {
     <>
       <fieldset disabled={!canEdit}><div className="form-grid" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(320px,1fr))' }}>
         <div className="form-col">
-          <div className="sect">Kimlik</div>
-          <Field label="Ad"><input className="input" {...bind('name')} /></Field>
-          <Field label="E-posta"><input className="input" {...bind('email')} /></Field>
-          <Field label="Vergi no"><input className="input mono" {...bind('tax_id')} /></Field>
-          <Field label="Adres"><textarea className="textarea" rows={2} {...bind('address')} /></Field>
+          <div className="sect">{t('vendors.identity')}</div>
+          <Field label={t('vendors.name')}><input className="input" {...bind('name')} /></Field>
+          <Field label={t('vendors.email')}><input className="input" {...bind('email')} /></Field>
+          <Field label={t('vendors.taxId')}><input className="input mono" {...bind('tax_id')} /></Field>
+          <Field label={t('vendors.address')}><textarea className="textarea" rows={2} {...bind('address')} /></Field>
         </div>
         <div className="form-col">
-          <div className="sect">Hesap</div>
-          <Field label="Para birimi"><Seg value={v.currency} options={currencies} onChange={(x) => set('currency', x)} /></Field>
-          <Field label="Durum"><Seg value={v.status} options={[{ value: 'active', label: 'Aktif' }, { value: 'suspended', label: 'Askıda' }]} onChange={(x) => set('status', x)} /></Field>
-          <Field label="Alış tarifesi"><select className="select" {...bind('tariff_id')}><option value="">—</option>{tariffs.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></Field>
-          <div className="field"><span className="label">Sağlayıcıya borcumuz</span>
+          <div className="sect">{t('vendors.account')}</div>
+          <Field label={t('vendors.currency')}><Seg value={v.currency} options={currencies} onChange={(x) => set('currency', x)} /></Field>
+          <Field label={t('vendors.status')}><Seg value={v.status} options={[{ value: 'active', label: t('status.active') }, { value: 'suspended', label: t('status.suspended') }]} onChange={(x) => set('status', x)} /></Field>
+          <Field label={t('vendors.buyTariff')}><select className="select" {...bind('tariff_id')}><option value="">—</option>{tariffs.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}</select></Field>
+          <div className="field"><span className="label">{t('vendors.owed')}</span>
             <div className="readonly-box">{money(vendor.balance)} {vendor.currency}</div>
-            <span className="hint">Elle düzenlenemez; yalnızca ödeme, düzeltme ve iade kaydıyla değişir.</span>
+            <span className="hint">{t('vendors.balanceHint')}</span>
           </div>
         </div>
       </div></fieldset>
       {error && <div className="banner bad" style={{ margin: '0 20px 12px' }}>{error}</div>}
       {canEdit && <div className="form-foot">
-        <button className="btn" onClick={() => { setV(initial()); setError('') }}>Vazgeç</button>
-        <button className="btn primary" disabled={busy} onClick={save}>Kaydet</button>
+        <button className="btn" onClick={() => { setV(initial()); setError('') }}>{t('action.cancel')}</button>
+        <button className="btn primary" disabled={busy} onClick={save}>{t('action.save')}</button>
       </div>}
     </>
   )

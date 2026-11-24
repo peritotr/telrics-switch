@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { useMemo, useState } from 'react'
 import { useGet, useLookup, type Row } from '../lib/api'
-import { day, money, num, pct } from '../lib/format'
+import { day, dec, money, num, pct } from '../lib/format'
+import { getLang, t } from '../lib/i18n'
 import { useBaseCurrency } from './ExchangeRates'
 import { DataTable, Split, Stat, Tabs, type Col } from '../ui/kit'
 
 const DAY = 86_400_000
-const ranges = [{ value: '1', label: 'Bugün' }, { value: '7', label: '7 gün' }, { value: '14', label: '14 gün' }]
-const metrics = [{ value: 'money', label: 'Gelir / maliyet' }, { value: 'calls', label: 'Çağrı' }, { value: 'asr', label: 'ASR' }]
-const dims = [{ value: 'client', label: 'Müşteri' }, { value: 'vendor', label: 'Sağlayıcı' }, { value: 'prefix', label: 'Önek' }, { value: 'day', label: 'Gün' }]
+const ranges = () => [{ value: '1', label: t('overview.today') }, { value: '7', label: t('overview.days', { n: 7 }) }, { value: '14', label: t('overview.days', { n: 14 }) }]
+const metrics = () => [{ value: 'money', label: t('overview.metricMoney') }, { value: 'calls', label: t('overview.metricCalls') }, { value: 'asr', label: 'ASR' }]
+const dims = () => [{ value: 'client', label: t('overview.dimClient') }, { value: 'vendor', label: t('overview.dimVendor') }, { value: 'prefix', label: t('overview.dimPrefix') }, { value: 'day', label: t('overview.dimDay') }]
 
 interface Sum { calls: number; answered: number; duration_sec: number; revenue: number; cost: number; failed_network: number; pdd_samples: number; pdd_sum_ms: number }
 const zero = (): Sum => ({ calls: 0, answered: 0, duration_sec: 0, revenue: 0, cost: 0, failed_network: 0, pdd_samples: 0, pdd_sum_ms: 0 })
@@ -21,7 +22,7 @@ const asr = (s: Sum) => (s.calls ? (100 * s.answered) / s.calls : NaN)
 // Network effectiveness: the share of attempts the network did not fail.
 const ner = (s: Sum) => (s.calls ? (100 * (s.calls - s.failed_network)) / s.calls : NaN)
 // Mean post-dial delay in seconds, over the attempts that reported progress.
-const pdd = (s: Sum) => (s.pdd_samples ? `${(s.pdd_sum_ms / s.pdd_samples / 1000).toFixed(1).replace('.', ',')}` : '—')
+const pdd = (s: Sum) => (s.pdd_samples ? dec(s.pdd_sum_ms / s.pdd_samples / 1000, 1) : '—')
 const acd = (s: Sum) => (s.answered ? Math.round(s.duration_sec / s.answered) : 0)
 const margin = (s: Sum) => (s.revenue ? (100 * (s.revenue - s.cost)) / s.revenue : NaN)
 
@@ -57,54 +58,54 @@ export function Overview() {
   })
   const max = metric === 'asr' ? 100 : niceMax(Math.max(...series.flatMap((s) => [s.v1, s.v2])))
   const tick = (v: number) => (metric === 'money' ? money(v * 1e6, max < 10 ? 2 : 0) : metric === 'asr' ? `${v}%` : num(v))
-  const [leg1, leg2] = metric === 'money' ? [`Gelir ${base}`, `Maliyet ${base}`] : metric === 'calls' ? ['Çağrı', 'Cevaplanan'] : ['ASR %', '']
+  const [leg1, leg2] = metric === 'money' ? [t('overview.revenueIn', { currency: base }), t('overview.costIn', { currency: base })] : metric === 'calls' ? [t('overview.calls'), t('overview.answered')] : ['ASR %', '']
 
   const label = (key: string) =>
-    dim === 'client' ? clients.name(Number(key)) : dim === 'vendor' ? (key ? vendors.name(Number(key)) : 'Sağlayıcıya gitmedi') : dim === 'day' ? day(key) : key || 'Fiyatı yok'
+    dim === 'client' ? clients.name(Number(key)) : dim === 'vendor' ? (key ? vendors.name(Number(key)) : t('overview.noVendor')) : dim === 'day' ? day(key) : key || t('overview.noRate')
   const rows = (byDim.data ?? []).map((r) => ({ ...add(zero(), r), key: r.key as string }))
   if (dim !== 'day' && dim !== 'prefix') rows.sort((a, b) => b.revenue - a.revenue)
   const profitClass = (s: Sum) => (s.revenue - s.cost < 0 ? 'bad' : undefined)
   const cols: Col<Sum & { key: string }>[] = [
-    { label: dims.find((d) => d.value === dim)!.label, width: 'minmax(190px,1.8fr)', render: (r) => <span className={dim === 'prefix' ? 'mono' : undefined}>{label(r.key)}</span>, total: 'Toplam' },
-    { label: 'Çağrı', width: 'minmax(72px,1fr)', align: 'right', mono: true, render: (r) => num(r.calls), total: num(total.calls) },
-    { label: 'Cevaplanan', width: 'minmax(72px,1fr)', align: 'right', mono: true, render: (r) => num(r.answered), total: num(total.answered) },
+    { label: dims().find((d) => d.value === dim)!.label, width: 'minmax(190px,1.8fr)', render: (r) => <span className={dim === 'prefix' ? 'mono' : undefined}>{label(r.key)}</span>, total: t('overview.total') },
+    { label: t('overview.calls'), width: 'minmax(72px,1fr)', align: 'right', mono: true, render: (r) => num(r.calls), total: num(total.calls) },
+    { label: t('overview.answered'), width: 'minmax(72px,1fr)', align: 'right', mono: true, render: (r) => num(r.answered), total: num(total.answered) },
     { label: 'ASR %', width: 'minmax(72px,1fr)', align: 'right', mono: true, render: (r) => pct(asr(r)), total: pct(asr(total)) },
     { label: 'NER %', width: 'minmax(64px,1fr)', align: 'right', mono: true, render: (r) => pct(ner(r)), total: pct(ner(total)) },
-    { label: 'PDD sn', width: 'minmax(64px,1fr)', align: 'right', mono: true, render: (r) => pdd(r), total: pdd(total) },
-    { label: 'ACD sn', width: 'minmax(72px,1fr)', align: 'right', mono: true, render: (r) => num(acd(r)), total: num(acd(total)) },
-    { label: 'Süre dk', width: 'minmax(72px,1fr)', align: 'right', mono: true, render: (r) => num(r.duration_sec / 60), total: num(total.duration_sec / 60) },
-    { label: `Gelir ${base}`, width: 'minmax(72px,1fr)', align: 'right', mono: true, render: (r) => money(r.revenue), total: money(total.revenue) },
-    { label: `Maliyet ${base}`, width: 'minmax(72px,1fr)', align: 'right', mono: true, render: (r) => money(r.cost), total: money(total.cost) },
-    { label: `Kâr ${base}`, width: 'minmax(72px,1fr)', align: 'right', mono: true, render: (r) => <span className={profitClass(r)}>{money(r.revenue - r.cost)}</span>, total: money(total.revenue - total.cost) },
-    { label: 'Marj %', width: 'minmax(72px,1fr)', align: 'right', mono: true, render: (r) => <span className={profitClass(r)}>{pct(margin(r))}</span>, total: pct(margin(total)) },
+    { label: t('overview.pddSec'), width: 'minmax(64px,1fr)', align: 'right', mono: true, render: (r) => pdd(r), total: pdd(total) },
+    { label: t('overview.acdSec'), width: 'minmax(72px,1fr)', align: 'right', mono: true, render: (r) => num(acd(r)), total: num(acd(total)) },
+    { label: t('overview.durationMin'), width: 'minmax(72px,1fr)', align: 'right', mono: true, render: (r) => num(r.duration_sec / 60), total: num(total.duration_sec / 60) },
+    { label: t('overview.revenueIn', { currency: base }), width: 'minmax(72px,1fr)', align: 'right', mono: true, render: (r) => money(r.revenue), total: money(total.revenue) },
+    { label: t('overview.costIn', { currency: base }), width: 'minmax(72px,1fr)', align: 'right', mono: true, render: (r) => money(r.cost), total: money(total.cost) },
+    { label: t('overview.marginIn', { currency: base }), width: 'minmax(72px,1fr)', align: 'right', mono: true, render: (r) => <span className={profitClass(r)}>{money(r.revenue - r.cost)}</span>, total: money(total.revenue - total.cost) },
+    { label: t('overview.marginPct'), width: 'minmax(72px,1fr)', align: 'right', mono: true, render: (r) => <span className={profitClass(r)}>{pct(margin(r))}</span>, total: pct(margin(total)) },
   ]
   const profit = total.revenue - total.cost
 
   return (
     <div className="page">
       <div className="row wrap" style={{ gap: 12 }}>
-        <h1>Genel bakış</h1>
+        <h1>{t('overview.title')}</h1>
         <div className="grow" />
         <div className="mono tx2" style={{ fontSize: 12 }}>{day(from)} – {day(new Date(Date.parse(to) - 1).toISOString())} UTC</div>
-        <Split value={range} options={ranges} onChange={setRange} />
+        <Split value={range} options={ranges()} onChange={setRange} />
       </div>
       <div className="stats" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))' }}>
-        <Stat label="Çağrı" value={num(total.calls)} />
-        <Stat label="Cevaplanan" value={num(total.answered)} />
+        <Stat label={t('overview.calls')} value={num(total.calls)} />
+        <Stat label={t('overview.answered')} value={num(total.answered)} />
         <Stat label="ASR" value={pct(asr(total))} unit="%" />
-        <Stat label="ACD" value={num(acd(total))} unit="sn" />
-        <Stat label="Toplam süre" value={num(total.duration_sec / 60)} unit="dk" />
-        <Stat label="Gelir" value={money(total.revenue)} unit={base} />
-        <Stat label="Maliyet" value={money(total.cost)} unit={base} />
-        <Stat label="Kâr" value={money(profit)} unit={base} tone={profit < 0 ? 'bad' : 'ok'} />
+        <Stat label="ACD" value={num(acd(total))} unit={t('overview.sec')} />
+        <Stat label={t('overview.totalDuration')} value={num(total.duration_sec / 60)} unit={t('overview.min')} />
+        <Stat label={t('overview.revenue')} value={money(total.revenue)} unit={base} />
+        <Stat label={t('overview.cost')} value={money(total.cost)} unit={base} />
+        <Stat label={t('overview.margin')} value={money(profit)} unit={base} tone={profit < 0 ? 'bad' : 'ok'} />
       </div>
       <div className="card" style={{ padding: 16 }}>
         <div className="row wrap" style={{ gap: 14, marginBottom: 16 }}>
-          <div className="sect">Gün bazlı</div>
+          <div className="sect">{t('overview.daily')}</div>
           <div className="legend"><i />{leg1}</div>
           {leg2 && <div className="legend"><i className="b2" />{leg2}</div>}
           <div className="grow" />
-          <Split small value={metric} options={metrics} onChange={setMetric} />
+          <Split small value={metric} options={metrics()} onChange={setMetric} />
         </div>
         <div className="chart">
           {[0, 0.25, 0.5, 0.75, 1].map((f) => <div key={f} className="tick" style={{ bottom: `${f * 100}%` }}><span>{tick(max * f)}</span></div>)}
@@ -117,15 +118,15 @@ export function Overview() {
             ))}
           </div>
         </div>
-        <div className="chart-x">{series.map((s) => <div key={s.d}>{s.d.slice(8)}.{s.d.slice(5, 7)}</div>)}</div>
+        <div className="chart-x">{series.map((s) => <div key={s.d}>{getLang() === 'en' ? `${s.d.slice(5, 7)}-${s.d.slice(8)}` : `${s.d.slice(8)}.${s.d.slice(5, 7)}`}</div>)}</div>
       </div>
       <div className="card clip">
         <div className="row" style={{ borderBottom: '1px solid var(--line)', paddingLeft: 16 }}>
-          <div className="sect">Kırılım</div>
-          <div style={{ flex: 1, marginBottom: -1 }}><Tabs h40 value={dim} tabs={dims} onChange={setDim} /></div>
+          <div className="sect">{t('overview.breakdown')}</div>
+          <div style={{ flex: 1, marginBottom: -1 }}><Tabs h40 value={dim} tabs={dims()} onChange={setDim} /></div>
         </div>
         <DataTable cols={cols} rows={rows} minWidth={1180} totals loading={byDim.isPending} error={byDim.error as any} onRetry={byDim.refetch}
-          empty={{ title: 'Bu aralıkta çağrı yok', desc: 'Seçilen tarih aralığında ücretlendirilmiş çağrı kaydı bulunmuyor.' }} />
+          empty={{ title: t('overview.empty'), desc: t('overview.emptyDesc') }} />
       </div>
     </div>
   )

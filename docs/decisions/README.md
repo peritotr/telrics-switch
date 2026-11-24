@@ -28,7 +28,7 @@ Yeni kayıt: sıradaki numara, `NNNN-kisa-ad.md`, aynı başlıklar. Karar veril
 | [0020](0020-trunk-adresleri.md) | Trunk kaynakları adres ve ağ listesidir; en dar ağ kazanır | 2026-11-22 |
 | [0021](0021-tek-sunucu-kurulumu-compose.md) | Kurulum: Docker Compose ile tek sunucu; çağrı yolu sunucunun ağında | 2026-11-22 |
 | [0022](0022-pazar-yeri-modulleri.md) | Ülkeye ve sağlayıcıya özgü entegrasyonlar pazar yeri modülüdür | 2026-11-22 |
-| [0023](0023-panel-teknolojisi-ve-kurallari.md) | Panel: React + TypeScript + Vite; tasarım paketine uyulur | 2026-11-21 |
+| [0023](0023-panel-teknolojisi-ve-kurallari.md) | Panel: React + TypeScript + Vite; tasarım paketine uyulur ("Arayüz Türkçedir" sonucunun yerini 0049 aldı) | 2026-11-21 |
 | [0024](0024-baglanti-ayarlari-temel-gelismis.md) | Bağlantı ayarları Temel ve Gelişmiş olarak ayrılır; davranışı olmayan ayar olmaz | 2026-11-23 |
 | [0025](0025-izleme-bagimliliksiz-olculer.md) | İzleme: bağımlılıksız ölçü paketi, Prometheus biçimi | 2026-11-22 |
 | [0026](0026-ack-gelmeyen-cagri.md) | Cevaplanan çağrı 32 saniyede ACK'lenmezse kapatılır | 2026-11-23 |
@@ -54,3 +54,4 @@ Yeni kayıt: sıradaki numara, `NNNN-kisa-ad.md`, aynı başlıklar. Karar veril
 | [0046](0046-reddedilen-cagrinin-izi.md) | Reddedilen çağrı, motor müşterinin olduğunu söylediğinde izlenir; yabancının hiçbir isteği izlenmez | 2026-11-23 |
 | [0047](0047-ipv6-adres-ailesi.md) | IPv6'da medyanın adres ailesini betik hedefin adres biçiminden seçer; kaynak adresi motorda tek biçime çevrilir | 2026-11-23 |
 | [0048](0048-gorunumde-yalnizca-degisen-fiyatlar.md) | Görüntü yüklenirken fiyatların yalnızca değişeni okunur; değişikliği veritabanındaki tetikleyici not eder | 2026-11-24 |
+| [0049](0049-panelin-ingilizce-arayuzu.md) | Panelin Türkçenin yanında İngilizce arayüzü olur; dil katmanı bağımlılıksızdır | 2026-11-24 |

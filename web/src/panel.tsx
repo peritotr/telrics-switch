@@ -5,6 +5,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { BrowserRouter, NavLink, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { getToken, request, setToken, setTwoStepRequiredHandler, setUnauthorizedHandler, type Session } from './lib/api'
+import { dt } from './lib/format'
+import { LangContext, addMessages, chooseLang, startLang, t, tx, type Lang } from './lib/i18n'
 import { SessionContext, type NavItem, type PanelExtension } from './lib/session'
 import { AuditLog } from './screens/AuditLog'
 import { BalanceAlerts } from './screens/BalanceAlerts'
@@ -26,30 +28,38 @@ import { Simulator } from './screens/Simulator'
 import { TariffDetail, Tariffs } from './screens/Tariffs'
 import { Users } from './screens/Users'
 import { VendorDetail, Vendors } from './screens/Vendors'
-import { Badge, UIProvider } from './ui/kit'
+import { Badge, LangSwitch, UIProvider } from './ui/kit'
 
-const groups = ['İzleme', 'Taraflar', 'Fiyat ve rota', 'Numara ve fatura', 'Araçlar', 'Sistem']
+/** Menu groups in order. A NavItem names its group by one of these ids. */
+const groups = ['monitoring', 'parties', 'pricing', 'numbers', 'tools', 'system']
+
+// Group names extensions used before the groups had ids.
+const legacyGroups: Record<string, string> = {
+  'İzleme': 'monitoring', 'Taraflar': 'parties', 'Fiyat ve rota': 'pricing', 'Numara ve fatura': 'numbers', 'Araçlar': 'tools', 'Sistem': 'system',
+}
+const groupOf = (i: NavItem) => legacyGroups[i.group] ?? i.group
+const groupName = (g: string) => tx(`nav.group.${g}`)
 
 const coreNav: NavItem[] = [
-  { group: 'İzleme', label: 'Genel bakış', path: '/' },
-  { group: 'İzleme', label: 'Çağrı kayıtları', path: '/cdrs' },
-  { group: 'İzleme', label: 'Canlı izleme', path: '/live' },
-  { group: 'İzleme', label: 'Canlı çağrılar', path: '/calls' },
-  { group: 'Taraflar', label: 'Müşteriler', path: '/clients' },
-  { group: 'Taraflar', label: 'Sağlayıcılar', path: '/vendors' },
-  { group: 'Fiyat ve rota', label: 'Tarifeler', path: '/tariffs' },
-  { group: 'Fiyat ve rota', label: 'Yönlendirme planları', path: '/plans' },
-  { group: 'Fiyat ve rota', label: 'Arayan numara kuralları', path: '/cli-rules' },
-  { group: 'Fiyat ve rota', label: 'Resmî tatiller', path: '/holidays' },
-  { group: 'Fiyat ve rota', label: 'Rota simülatörü', path: '/simulator' },
-  { group: 'Araçlar', label: 'Sistem kaynakları', path: '/tools/system' },
-  { group: 'Araçlar', label: 'Güvenlik duvarı', path: '/tools/firewall' },
-  { group: 'Araçlar', label: 'Çağrı izi', path: '/tools/trace' },
-  { group: 'Sistem', label: 'Ayarlar', path: '/settings' },
-  { group: 'Sistem', label: 'Düşük bakiye uyarıları', path: '/alerts' },
-  { group: 'Sistem', label: 'Zamanlanmış raporlar', path: '/report-schedules' },
-  { group: 'Sistem', label: 'Kullanıcılar ve roller', path: '/users' },
-  { group: 'Sistem', label: 'Denetim kaydı', path: '/audit-log' },
+  { group: 'monitoring', label: 'nav.overview', path: '/' },
+  { group: 'monitoring', label: 'nav.cdrs', path: '/cdrs' },
+  { group: 'monitoring', label: 'nav.live', path: '/live' },
+  { group: 'monitoring', label: 'nav.calls', path: '/calls' },
+  { group: 'parties', label: 'nav.clients', path: '/clients' },
+  { group: 'parties', label: 'nav.vendors', path: '/vendors' },
+  { group: 'pricing', label: 'nav.tariffs', path: '/tariffs' },
+  { group: 'pricing', label: 'nav.plans', path: '/plans' },
+  { group: 'pricing', label: 'nav.cliRules', path: '/cli-rules' },
+  { group: 'pricing', label: 'nav.holidays', path: '/holidays' },
+  { group: 'pricing', label: 'nav.simulator', path: '/simulator' },
+  { group: 'tools', label: 'nav.system', path: '/tools/system' },
+  { group: 'tools', label: 'nav.firewall', path: '/tools/firewall' },
+  { group: 'tools', label: 'nav.trace', path: '/tools/trace' },
+  { group: 'system', label: 'nav.settings', path: '/settings' },
+  { group: 'system', label: 'nav.alerts', path: '/alerts' },
+  { group: 'system', label: 'nav.schedules', path: '/report-schedules' },
+  { group: 'system', label: 'nav.users', path: '/users' },
+  { group: 'system', label: 'nav.audit', path: '/audit-log' },
 ]
 
 const coreRoutes: { path: string; element: ReactNode }[] = [
@@ -86,10 +96,7 @@ function Clock() {
     const t = setInterval(() => setNow(new Date()), 20_000)
     return () => clearInterval(t)
   }, [])
-  const p = (n: number) => String(n).padStart(2, '0')
-  return <div className="mono tx3" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
-    {p(now.getUTCDate())}.{p(now.getUTCMonth() + 1)}.{now.getUTCFullYear()} {p(now.getUTCHours())}:{p(now.getUTCMinutes())} UTC
-  </div>
+  return <div className="mono tx3" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>{dt(now)} UTC</div>
 }
 
 function GlobalSearch() {
@@ -103,11 +110,11 @@ function GlobalSearch() {
     else navigate(`/clients?q=${encodeURIComponent(q)}`)
     setText('')
   }
-  return <input className="input" style={{ width: 280, background: 'var(--bg)' }} placeholder="Müşteri, numara ya da Call-ID ara"
+  return <input className="input" style={{ width: 280, background: 'var(--bg)' }} placeholder={t('shell.search')}
     value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && go()} />
 }
 
-function Shell({ session, nav, routes, logout, topBar }: { session: Session; nav: NavItem[]; routes: { path: string; element: ReactNode }[]; logout: () => void; topBar: ReactNode }) {
+function Shell({ session, nav, routes, logout, topBar, lang }: { session: Session; nav: NavItem[]; routes: { path: string; element: ReactNode }[]; logout: () => void; topBar: ReactNode; lang: Lang }) {
   const { pathname } = useLocation()
   const active = (item: NavItem) => item.path != null && (item.path === '/' ? pathname === '/' : pathname === item.path || pathname.startsWith(item.path + '/'))
   const current = nav.find(active)
@@ -122,14 +129,14 @@ function Shell({ session, nav, routes, logout, topBar }: { session: Session; nav
         </div>
         <nav className="nav">
           {groups.map((g) => {
-            const items = nav.filter((i) => i.group === g)
+            const items = nav.filter((i) => groupOf(i) === g)
             if (!items.length) return null
             return (
               <div key={g}>
-                <div className="nav-group">{g}</div>
+                <div className="nav-group">{groupName(g)}</div>
                 {[...items.filter((i) => !i.soon), ...items.filter((i) => i.soon)].map((i) => i.soon
-                  ? <div key={i.label} className="nav-item soon"><span className="grow ell">{i.label}</span><span className="nav-tag">yakında</span></div>
-                  : <NavLink key={i.label} to={i.path!} className={'nav-item' + (active(i) ? ' active' : '')}><span className="grow ell">{i.label}</span></NavLink>)}
+                  ? <div key={i.label} className="nav-item soon"><span className="grow ell">{tx(i.label)}</span><span className="nav-tag">{t('nav.soon')}</span></div>
+                  : <NavLink key={i.label} to={i.path!} className={'nav-item' + (active(i) ? ' active' : '')}><span className="grow ell">{tx(i.label)}</span></NavLink>)}
               </div>
             )
           })}
@@ -137,21 +144,23 @@ function Shell({ session, nav, routes, logout, topBar }: { session: Session; nav
         <div className="side-foot">
           <div className={session.user ? 'ell' : 'mono ell'} style={{ fontSize: 12 }} title={session.user?.email}>{session.key.name}</div>
           <div className="row tx3" style={{ fontSize: 11.5 }}>
-            <span className="grow ell">{session.user ? '' : 'API anahtarı · '}{readonly ? 'Salt okunur' : 'Yönetici'}</span>
-            <a onClick={logout}>Oturumu kapat</a>
+            <span className="grow ell">{session.user ? '' : t('shell.apiKey')}{readonly ? t('shell.readonly') : t('shell.admin')}</span>
+            <a onClick={logout}>{t('shell.logout')}</a>
           </div>
         </div>
       </aside>
       <div className="main">
         <header className="top">
-          <div className="tx3 ell">{current ? `${current.group} › ${current.label}` : ''}</div>
+          <div className="tx3 ell">{current ? `${groupName(groupOf(current))} › ${tx(current.label)}` : ''}</div>
           <div className="grow" />
           <GlobalSearch />
-          {readonly && <Badge tone="warn">Salt okunur</Badge>}
+          {readonly && <Badge tone="warn">{t('shell.readonly')}</Badge>}
           {topBar}
+          <LangSwitch />
           <Clock />
         </header>
-        <main className="content" id="mainscroll">
+        {/* Remounted on a change of language, so that every page, an extension's too, renders anew in it. */}
+        <main className="content" id="mainscroll" key={lang}>
           <Routes>
             {routes.map((r) => <Route key={r.path} path={r.path} element={r.element} />)}
             <Route path="*" element={<Navigate to="/" replace />} />
@@ -165,6 +174,8 @@ function Shell({ session, nav, routes, logout, topBar }: { session: Session; nav
 const devKey = 'tsw.dev-session'
 
 function Root({ ext }: { ext: PanelExtension[] }) {
+  const [lang, setLangState] = useState(startLang)
+  const setLang = (l: Lang) => { chooseLang(l); setLangState(l) }
   const [session, setSession] = useState<Session | null>(null)
   const client = useMemo(() => new QueryClient({
     defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false, staleTime: 5_000 } },
@@ -205,16 +216,17 @@ function Root({ ext }: { ext: PanelExtension[] }) {
     const saved = import.meta.env.DEV && window.location.pathname !== '/reset' ? sessionStorage.getItem(devKey) : null
     if (saved) request<Session>('GET', '/v1/session', { key: saved }).then((r) => login(saved, r.data), () => sessionStorage.removeItem(devKey))
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
-  if (!session) return <Login onLogin={login} />
-  if (session.user?.two_step_setup_required) return <UIProvider><TwoStepRequired session={session} recheck={recheck} logout={logout} /></UIProvider>
+  const langs = (children: ReactNode) => <LangContext.Provider value={{ lang, setLang }}>{children}</LangContext.Provider>
+  if (!session) return langs(<Login onLogin={login} />)
+  if (session.user?.two_step_setup_required) return langs(<UIProvider><TwoStepRequired session={session} recheck={recheck} logout={logout} /></UIProvider>)
   const nav = ext.reduce((items, e) => e.filterNav?.(items, session) ?? items, [...coreNav, ...ext.flatMap((e) => e.nav ?? [])])
   const routes = [...coreRoutes, ...ext.flatMap((e) => e.routes ?? [])]
-  return (
+  return langs(
     <QueryClientProvider client={client}>
       <SessionContext.Provider value={{ session, canEdit: session.key.role === 'admin', logout, ext }}>
         <UIProvider>
           <BrowserRouter>
-            <Shell session={session} nav={nav} routes={routes} logout={logout} topBar={ext.map((e, i) => <span key={i}>{e.topBar?.(session)}</span>)} />
+            <Shell session={session} nav={nav} routes={routes} logout={logout} lang={lang} topBar={ext.map((e, i) => <span key={i}>{e.topBar?.(session)}</span>)} />
           </BrowserRouter>
         </UIProvider>
       </SessionContext.Provider>
@@ -224,6 +236,7 @@ function Root({ ext }: { ext: PanelExtension[] }) {
 
 /** Builds the panel, optionally with extensions that add screens, menu items and tabs. */
 export function createPanel(...extensions: PanelExtension[]) {
+  for (const e of extensions) if (e.messages) addMessages(e.messages)
   return function Panel() {
     return <Root ext={extensions} />
   }

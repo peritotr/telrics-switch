@@ -15,7 +15,7 @@ Her görevin kabul ölçütlerine ek olarak **ortak kabul ölçütleri** geçerl
 3. Çağrı yoluna dokunulduysa: `make load CPS=200 CC=2000 DURATION=30` geçer, karar p99 < 10 ms; sonuç raporlanır.
 4. Şema değiştiyse: yeni migration dosyası; var olan satırlar eskisi gibi davranır.
 5. Genişleme noktası imzası ya da görüntü alanı değiştiyse: Enterprise deposu derlenir ve testleri geçer.
-6. Yeni kaynak dosyası SPDX başlığı taşır; kod ve yorumlar İngilizce, `docs/` ve panel metinleri Türkçe.
+6. Yeni kaynak dosyası SPDX başlığı taşır; kod ve yorumlar İngilizce, `docs/` Türkçe; panel metinleri iki dilde (Türkçe ve İngilizce katalogda birlikte, ADR-0049).
 7. İlgili belgeler güncellenir: `docs/08` (arayüz), `06` (API), `07` (panel sapmaları), `10` (ölçü ve alarm), `03`/`05` (durum), gerekiyorsa yeni ADR.
 
 Durumlar: **Hazır** (başlanabilir), **Bekliyor** (AÇIK SORU ya da dış girdi), **Sunucu** (gerçek Linux sunucu gerekir).

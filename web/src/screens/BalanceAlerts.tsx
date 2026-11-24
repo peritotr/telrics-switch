@@ -3,9 +3,10 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useLookup, usePaged, type Row } from '../lib/api'
 import { dt, money } from '../lib/format'
+import { t } from '../lib/i18n'
 import { Badge, DataTable, PageHead, Pager, Tabs, type Col } from '../ui/kit'
 
-const tabs = [{ value: 'open', label: 'Açık' }, { value: 'cleared', label: 'Kapananlar' }]
+const tabs = () => [{ value: 'open', label: t('alerts.open') }, { value: 'cleared', label: t('alerts.cleared') }]
 
 export function BalanceAlerts() {
   const [state, setState] = useState('open')
@@ -15,29 +16,28 @@ export function BalanceAlerts() {
   const cur = (r: Row) => client(r)?.currency ?? ''
 
   const cols: Col<Row>[] = [
-    { label: 'Müşteri', width: 'minmax(200px,1.6fr)', render: (r) => <Link to={`/clients/${r.client_id}`}>{clients.name(r.client_id)}</Link> },
-    { label: 'Eşik', width: '140px', align: 'right', mono: true, render: (r) => `${money(r.threshold)} ${cur(r)}` },
-    { label: 'Uyarı anındaki bakiye', width: '170px', align: 'right', mono: true, render: (r) => <span className={r.balance < 0 ? 'bad' : undefined}>{money(r.balance)} {cur(r)}</span> },
-    { label: 'Güncel bakiye', width: '150px', align: 'right', mono: true, render: (r) => {
+    { label: t('alerts.client'), width: 'minmax(200px,1.6fr)', render: (r) => <Link to={`/clients/${r.client_id}`}>{clients.name(r.client_id)}</Link> },
+    { label: t('alerts.threshold'), width: '140px', align: 'right', mono: true, render: (r) => `${money(r.threshold)} ${cur(r)}` },
+    { label: t('alerts.balanceAtAlert'), width: '170px', align: 'right', mono: true, render: (r) => <span className={r.balance < 0 ? 'bad' : undefined}>{money(r.balance)} {cur(r)}</span> },
+    { label: t('alerts.balanceNow'), width: '150px', align: 'right', mono: true, render: (r) => {
       const c = client(r)
       return c ? <span className={c.balance < 0 ? 'bad' : undefined}>{money(c.balance)} {c.currency}</span> : '—'
     } },
-    { label: 'Açıldı', width: '150px', mono: true, render: (r) => dt(r.raised_at, true) },
+    { label: t('alerts.raised'), width: '150px', mono: true, render: (r) => dt(r.raised_at, true) },
     state === 'open'
-      ? { label: 'Durum', width: '110px', render: () => <Badge tone="warn">Açık</Badge> }
-      : { label: 'Kapandı', width: '150px', mono: true, render: (r) => dt(r.cleared_at, true) },
+      ? { label: t('alerts.status'), width: '110px', render: () => <Badge tone="warn">{t('alerts.open')}</Badge> }
+      : { label: t('alerts.clearedAt'), width: '150px', mono: true, render: (r) => dt(r.cleared_at, true) },
   ]
   return (
     <div className="page">
-      <PageHead title="Düşük bakiye uyarıları"
-        desc="Bakiyesi, müşteri kaydında belirlenen eşiğe ya da altına inen müşteriler. Bakiye eşiğin üstüne çıkınca uyarı kendiliğinden kapanır." />
+      <PageHead title={t('alerts.title')} desc={t('alerts.desc')} />
       <div className="card clip">
-        <Tabs value={state} tabs={tabs} onChange={setState} />
-        <DataTable cols={cols} rows={list.rows} minWidth={980} loading={list.loading} error={list.error} onRetry={list.refetch} errorTitle="Uyarılar yüklenemedi"
+        <Tabs value={state} tabs={tabs()} onChange={setState} />
+        <DataTable cols={cols} rows={list.rows} minWidth={980} loading={list.loading} error={list.error} onRetry={list.refetch} errorTitle={t('alerts.loadError')}
           empty={state === 'open'
-            ? { title: 'Açık uyarı yok', desc: 'Eşiği tanımlı müşterilerin hepsinin bakiyesi eşiğin üstünde. Eşik, müşteri detayındaki Genel sekmesinden girilir.' }
-            : { title: 'Kapanmış uyarı yok', desc: 'Bakiyesi eşiğin altına inip yeniden üstüne çıkan müşteri olmadı.' }} />
-        <Pager p={list} noun="uyarı" />
+            ? { title: t('alerts.noOpen'), desc: t('alerts.noOpenDesc') }
+            : { title: t('alerts.noCleared'), desc: t('alerts.noClearedDesc') }} />
+        <Pager p={list} noun={t('alerts.noun')} />
       </div>
     </div>
   )

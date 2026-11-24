@@ -11,6 +11,7 @@ import type { GeometryCollection, Topology } from 'topojson-specification'
 import worldUrl from 'world-atlas/countries-110m.json?url'
 import { api, type ApiError } from '../lib/api'
 import { dec, num, sipReason, sipTone } from '../lib/format'
+import { getLang, t as tt } from '../lib/i18n'
 import { isoNumeric } from '../lib/iso3166'
 import { Split } from '../ui/kit'
 
@@ -58,23 +59,24 @@ const TH: Record<Metric, (v: number) => Tone> = {
   pdd: (v) => (v <= 3 ? 'ok' : v <= 5 ? 'warn' : 'bad'),
   ner: (v) => (v >= 0.95 ? 'ok' : v >= 0.9 ? 'warn' : 'bad'),
 }
-const LEG: Record<Metric, string[]> = {
-  asr: ['ASR ≥ %45', '%35 – %45', '< %35'],
-  pdd: ['PDD ≤ 3 sn', '3 – 5 sn', '> 5 sn'],
-  ner: ['NER ≥ %95', '%90 – %95', '< %90'],
-}
+const LEG = (): Record<Metric, string[]> => ({
+  asr: [tt('live.legAsr1'), tt('live.legAsr2'), tt('live.legAsr3')],
+  pdd: [tt('live.legPdd1'), tt('live.legPdd2'), tt('live.legPdd3')],
+  ner: [tt('live.legNer1'), tt('live.legNer2'), tt('live.legNer3')],
+})
 const metrics = [{ value: 'asr', label: 'ASR' }, { value: 'pdd', label: 'PDD' }, { value: 'ner', label: 'NER' }]
 const tone = (m: Metric, v: number | null) => (v == null ? null : TH[m](v))
 /** CSS colour of a tone; a value that could not be computed has none. */
 const col = (t: string | null, none = 'var(--tx3)') => (t ? `var(--${t})` : none)
 const useTone = (u: number) => (u >= 0.9 ? 'bad' : u >= 0.8 ? 'warn' : 'acc')
 const share = (v: number | null) => (v == null ? null : v * 100)
-const unit = (text: string, before: string, after = '') => (text === '—' ? text : before + text + after)
+/** A share as a percentage, or seconds, in the interface language's way; "—" stays as it is. */
+const pctOf = (text: string) => (text === '—' ? text : tt('live.pct', { v: text }))
+const secOf = (text: string) => (text === '—' ? text : tt('live.secValue', { v: text }))
 
-const regionNames = new Intl.DisplayNames(['tr'], { type: 'region' })
 function countryName(cc: string) {
-  if (!cc) return 'Bilinmeyen'
-  try { return regionNames.of(cc) ?? cc } catch { return cc }
+  if (!cc) return tt('live.unknownCountry')
+  try { return new Intl.DisplayNames([getLang()], { type: 'region' }).of(cc) ?? cc } catch { return cc }
 }
 
 interface CountryRow { cc: string; name: string; calls: number; r: Rates; prefixes: Share[]; connections: Share[] }
@@ -117,7 +119,7 @@ function Bars({ title, items, mono }: { title: string; items: Share[]; mono?: bo
         <div className="lv-bar" key={s.key}>
           <div className={'ell' + (mono ? ' mono' : '')}>{s.key}</div>
           <Gauge part={s.count / sum} />
-          <div className="p">%{num((100 * s.count) / sum)}</div>
+          <div className="p">{pctOf(num((100 * s.count) / sum))}</div>
         </div>
       ))}
     </div>
@@ -206,7 +208,7 @@ function WorldMap({ rows, metric, selected, onSelect }: { rows: CountryRow[]; me
   }
   // A click that ends a drag must not select the country under it.
   const dragged = () => drag.current?.moved === true
-  if (world.error) return <div className="lv-mapmsg">Harita verisi yüklenemedi. Ülke tablosu ve metrikler çalışmaya devam ediyor.</div>
+  if (world.error) return <div className="lv-mapmsg">{tt('live.mapError')}</div>
   if (!geo) return <svg className="lv-map" viewBox={`0 0 ${W} ${H}`} />
 
   const byCc = new Map(rows.map((c) => [c.cc, c]))
@@ -223,11 +225,11 @@ function WorldMap({ rows, metric, selected, onSelect }: { rows: CountryRow[]; me
   return (
     <>
       <div className="lv-zoom">
-        <button className="btn sm" onClick={() => zoomAt(1.5)} disabled={view.k >= MAX_ZOOM} aria-label="Yakınlaştır" title="Yakınlaştır">+</button>
-        <button className="btn sm" onClick={() => zoomAt(1 / 1.5)} disabled={view.k <= 1} aria-label="Uzaklaştır" title="Uzaklaştır">−</button>
-        <button className="btn sm" onClick={() => setView({ k: 1, x: 0, y: 0 })} disabled={view.k === 1}>Tümü</button>
+        <button className="btn sm" onClick={() => zoomAt(1.5)} disabled={view.k >= MAX_ZOOM} aria-label={tt('live.zoomIn')} title={tt('live.zoomIn')}>+</button>
+        <button className="btn sm" onClick={() => zoomAt(1 / 1.5)} disabled={view.k <= 1} aria-label={tt('live.zoomOut')} title={tt('live.zoomOut')}>−</button>
+        <button className="btn sm" onClick={() => setView({ k: 1, x: 0, y: 0 })} disabled={view.k === 1}>{tt('live.zoomAll')}</button>
       </div>
-      <svg ref={svg} className={'lv-map' + (view.k > 1 ? ' pan' : '')} viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Hedef ülkelere göre trafik haritası"
+      <svg ref={svg} className={'lv-map' + (view.k > 1 ? ' pan' : '')} viewBox={`0 0 ${W} ${H}`} role="img" aria-label={tt('live.mapLabel')}
         onPointerDown={down} onPointerMove={move}>
         <g transform={`translate(${view.x} ${view.y}) scale(${view.k})`}>
         <g>
@@ -251,12 +253,12 @@ function WorldMap({ rows, metric, selected, onSelect }: { rows: CountryRow[]; me
       {hover && (
         <div className="lv-tip" style={{ left: tip.x, top: tip.y }}>
           <b>{hover.name}</b>
-          <div><span>Eşzamanlı çağrı</span><span>{num(hover.calls)}</span></div>
+          <div><span>{tt('live.concurrent')}</span><span>{num(hover.calls)}</span></div>
           <div><span>CPS</span><span>{dec(hover.r.cps, 1)}</span></div>
-          <div><span>ASR</span><span>{unit(dec(share(hover.r.asr), 1), '%')}</span></div>
-          <div><span>ACD</span><span>{unit(num(hover.r.acd), '', ' sn')}</span></div>
-          <div><span>PDD</span><span>{unit(dec(hover.r.pdd, 1), '', ' sn')}</span></div>
-          <div><span>NER</span><span>{unit(dec(share(hover.r.ner), 1), '%')}</span></div>
+          <div><span>ASR</span><span>{pctOf(dec(share(hover.r.asr), 1))}</span></div>
+          <div><span>ACD</span><span>{secOf(num(hover.r.acd))}</span></div>
+          <div><span>PDD</span><span>{secOf(dec(hover.r.pdd, 1))}</span></div>
+          <div><span>NER</span><span>{pctOf(dec(share(hover.r.ner), 1))}</span></div>
         </div>
       )}
     </>
@@ -266,9 +268,9 @@ function WorldMap({ rows, metric, selected, onSelect }: { rows: CountryRow[]; me
 // ---- screen ----
 
 function errorMessage(e: ApiError) {
-  if (e.status === 503) return 'Yönlendirme motoruna ulaşılamıyor ya da motorun adresi tanımlı değil.'
-  if (e.status === 403) return 'Canlı trafik yalnızca tüm müşterileri gören hesaplara açıktır.'
-  return e.status ? e.message : 'Sunucuya ulaşılamadı.'
+  if (e.status === 503) return tt('live.err503')
+  if (e.status === 403) return tt('live.err403')
+  return e.status ? e.message : tt('live.unreachable')
 }
 
 export function LiveMonitor() {
@@ -280,11 +282,11 @@ export function LiveMonitor() {
 
   const head = (
     <div className="row wrap" style={{ gap: 12 }}>
-      <h1>Canlı izleme</h1>
-      <span className={'lv-pill' + (paused ? ' off' : '')}><i />{paused ? 'Duraklatıldı' : 'Canlı · 1 sn'}</span>
-      <span className="lv-note">Grafikler son 60 saniyeyi gösterir</span>
+      <h1>{tt('live.title')}</h1>
+      <span className={'lv-pill' + (paused ? ' off' : '')}><i />{paused ? tt('live.paused') : tt('live.liveEvery', { n: 1 })}</span>
+      <span className="lv-note">{tt('live.last60')}</span>
       <div className="grow" />
-      <button className="btn" onClick={() => setPaused(!paused)}>{paused ? 'Sürdür' : 'Duraklat'}</button>
+      <button className="btn" onClick={() => setPaused(!paused)}>{paused ? tt('live.resume') : tt('live.pause')}</button>
     </div>
   )
   if (error || !q.data) {
@@ -294,11 +296,11 @@ export function LiveMonitor() {
         <div className="card">
           {error
             ? <div className="state">
-              <div className="t bad">Canlı veri alınamadı</div>
+              <div className="t bad">{tt('live.noData')}</div>
               <div className="d">{errorMessage(error)}{error.status > 0 && <> <span className="mono">(HTTP {error.status})</span></>}</div>
-              <button className="btn" onClick={() => q.refetch()}>Yeniden dene</button>
+              <button className="btn" onClick={() => q.refetch()}>{tt('action.retry')}</button>
             </div>
-            : <div className="tx3" style={{ padding: '10px 16px', fontSize: 12 }}>Yükleniyor…</div>}
+            : <div className="tx3" style={{ padding: '10px 16px', fontSize: 12 }}>{tt('kit.loading')}</div>}
         </div>
       </div>
     )
@@ -340,28 +342,28 @@ export function LiveMonitor() {
     <div className="page">
       {head}
       <div className="stats lv-kpis">
-        <Kpi label="Eşzamanlı çağrı" value={num(live.calls)} series={callSeries} />
-        <Kpi label="CPS" value={dec(cpsNow, 1)} sub={`Tepe ${dec(cpsPeak, 1)}`} series={seconds.map((s) => s.attempts)} />
-        <Kpi label="ASR" value={dec(share(T.asr), 1)} unit="%" sub="Cevaplanan / toplam" tone={tone('asr', T.asr)} series={perSec.map((r) => r.asr)} />
-        <Kpi label="ACD" value={num(T.acd)} unit="sn" sub="Ortalama çağrı süresi" series={perSec.map((r) => r.acd)} />
-        <Kpi label="PDD" value={dec(T.pdd, 2)} unit="sn" sub="Çalma öncesi gecikme" tone={tone('pdd', T.pdd)} series={perSec.map((r) => r.pdd)} />
-        <Kpi label="NER" value={dec(share(T.ner), 1)} unit="%" sub="Ağın çağrıyı ulaştırma oranı" tone={tone('ner', T.ner)} series={perSec.map((r) => r.ner)} />
-        <Kpi label="SIP 503 oranı" value={dec(share(T.e5), 2)} unit="%" sub="Sağlayıcı kaynaklı ret" tone={T.e5 != null && T.e5 > 0.05 ? 'bad' : null} series={perSec.map((r) => r.e5)} />
-        <Kpi label="Aktif hedef ülke" value={num(known.length)} sub={`${num(critical)} ülkede ASR kritik`} series={callSeries} />
+        <Kpi label={tt('live.concurrent')} value={num(live.calls)} series={callSeries} />
+        <Kpi label="CPS" value={dec(cpsNow, 1)} sub={tt('live.peak', { v: dec(cpsPeak, 1) })} series={seconds.map((s) => s.attempts)} />
+        <Kpi label="ASR" value={dec(share(T.asr), 1)} unit="%" sub={tt('live.asrSub')} tone={tone('asr', T.asr)} series={perSec.map((r) => r.asr)} />
+        <Kpi label="ACD" value={num(T.acd)} unit={tt('live.sec')} sub={tt('live.acdSub')} series={perSec.map((r) => r.acd)} />
+        <Kpi label="PDD" value={dec(T.pdd, 2)} unit={tt('live.sec')} sub={tt('live.pddSub')} tone={tone('pdd', T.pdd)} series={perSec.map((r) => r.pdd)} />
+        <Kpi label="NER" value={dec(share(T.ner), 1)} unit="%" sub={tt('live.nerSub')} tone={tone('ner', T.ner)} series={perSec.map((r) => r.ner)} />
+        <Kpi label={tt('live.e503')} value={dec(share(T.e5), 2)} unit="%" sub={tt('live.e503Sub')} tone={T.e5 != null && T.e5 > 0.05 ? 'bad' : null} series={perSec.map((r) => r.e5)} />
+        <Kpi label={tt('live.countries')} value={num(known.length)} sub={tt('live.critical', { n: num(critical) })} series={callSeries} />
       </div>
 
       <div className="lv-row2">
         <section className="card clip lv-mapp">
           <div className="lv-ph">
-            <span className="sect">Hedef ülkelere göre trafik</span>
-            <span className="lv-note">Daire boyutu: eşzamanlı çağrı · ayrıntı için ülkenin üzerine gelin</span>
+            <span className="sect">{tt('live.byCountry')}</span>
+            <span className="lv-note">{tt('live.mapNote')}</span>
             <span className="grow" />
             <Split small value={metric} options={metrics} onChange={(v) => setMetric(v as Metric)} />
           </div>
           <WorldMap rows={known} metric={metric} selected={selected?.cc} onSelect={setPicked} />
           <div className="lv-legend">
-            {(['ok', 'warn', 'bad'] as const).map((t, i) => <span key={t}><i className="lv-dot" style={{ background: col(t) }} />{LEG[metric][i]}</span>)}
-            <span><i className="lv-sq" />Geçiş noktası · İstanbul</span>
+            {(['ok', 'warn', 'bad'] as const).map((t, i) => <span key={t}><i className="lv-dot" style={{ background: col(t) }} />{LEG()[metric][i]}</span>)}
+            <span><i className="lv-sq" />{tt('live.transit')}</span>
           </div>
         </section>
         <div className="lv-side">
@@ -370,21 +372,21 @@ export function LiveMonitor() {
               <div className="lv-det">
                 <h3>{selected.name}{selected.cc && <small>{selected.cc}</small>}</h3>
                 <div className="lv-mg">
-                  <div><span>Eşzamanlı</span><b>{num(selected.calls)}</b></div>
+                  <div><span>{tt('live.concurrentShort')}</span><b>{num(selected.calls)}</b></div>
                   <div><span>CPS</span><b>{dec(selected.r.cps, 1)}</b></div>
-                  <div><span>ASR</span><b style={{ color: col(tone('asr', selected.r.asr), 'var(--tx)') }}>{unit(dec(share(selected.r.asr), 1), '%')}</b></div>
-                  <div><span>ACD</span><b>{unit(num(selected.r.acd), '', ' sn')}</b></div>
-                  <div><span>PDD</span><b style={{ color: col(tone('pdd', selected.r.pdd), 'var(--tx)') }}>{unit(dec(selected.r.pdd, 1), '', ' sn')}</b></div>
-                  <div><span>NER</span><b style={{ color: col(tone('ner', selected.r.ner), 'var(--tx)') }}>{unit(dec(share(selected.r.ner), 1), '%')}</b></div>
+                  <div><span>ASR</span><b style={{ color: col(tone('asr', selected.r.asr), 'var(--tx)') }}>{pctOf(dec(share(selected.r.asr), 1))}</b></div>
+                  <div><span>ACD</span><b>{secOf(num(selected.r.acd))}</b></div>
+                  <div><span>PDD</span><b style={{ color: col(tone('pdd', selected.r.pdd), 'var(--tx)') }}>{secOf(dec(selected.r.pdd, 1))}</b></div>
+                  <div><span>NER</span><b style={{ color: col(tone('ner', selected.r.ner), 'var(--tx)') }}>{pctOf(dec(share(selected.r.ner), 1))}</b></div>
                 </div>
-                <Bars title="Önek dağılımı" items={selected.prefixes} mono />
-                <Bars title="Sağlayıcı dağılımı" items={vendorShares(selected)} />
+                <Bars title={tt('live.prefixShare')} items={selected.prefixes} mono />
+                <Bars title={tt('live.vendorShare')} items={vendorShares(selected)} />
               </div>
             </section>
           )}
           <section className="card clip lv-t">
             <div className="thead" style={{ gridTemplateColumns: 'minmax(110px,1fr) 52px 44px 48px 48px' }}>
-              <div>Ülke</div><div className="right">Çağrı</div><div className="right">CPS</div><div className="right">ASR %</div><div className="right">PDD sn</div>
+              <div>{tt('live.country')}</div><div className="right">{tt('live.calls')}</div><div className="right">CPS</div><div className="right">{tt('live.asrPct')}</div><div className="right">{tt('live.pddSec')}</div>
             </div>
             <div className="lv-scroll">
               {countries.map((c) => (
@@ -396,7 +398,7 @@ export function LiveMonitor() {
                   <div className="right" style={cell('pdd', c.r.pdd)}>{dec(c.r.pdd, 1)}</div>
                 </div>
               ))}
-              {!countries.length && <Empty title="Trafik yok" desc="Son 60 saniyede hedef ülkesi belirlenen çağrı olmadı." />}
+              {!countries.length && <Empty title={tt('live.noTraffic')} desc={tt('live.noTrafficDesc')} />}
             </div>
           </section>
         </div>
@@ -404,9 +406,9 @@ export function LiveMonitor() {
 
       <div className="lv-row3">
         <section className="card clip lv-t">
-          <div className="lv-ph"><span className="sect">SIP yanıt dağılımı</span></div>
+          <div className="lv-ph"><span className="sect">{tt('live.sipCodes')}</span></div>
           <div className="thead" style={{ gridTemplateColumns: '170px minmax(60px,1fr) 52px 60px' }}>
-            <div>Kod</div><div /><div className="right">Pay %</div><div className="right">Yanıt/sn</div>
+            <div>{tt('live.code')}</div><div /><div className="right">{tt('live.sharePct')}</div><div className="right">{tt('live.perSec')}</div>
           </div>
           {codes.map((s) => (
             <div key={s.key} className="trow" style={{ gridTemplateColumns: '170px minmax(60px,1fr) 52px 60px' }}>
@@ -419,13 +421,13 @@ export function LiveMonitor() {
               <div className="right">{dec(s.count / win, 1)}</div>
             </div>
           ))}
-          {!codes.length && <Empty title="Yanıt yok" desc="Son 60 saniyede sonuçlanan arama denemesi olmadı." />}
+          {!codes.length && <Empty title={tt('live.noCodes')} desc={tt('live.noCodesDesc')} />}
         </section>
 
         <section className="card clip lv-t">
-          <div className="lv-ph"><span className="sect">Sağlayıcı bağlantıları</span></div>
+          <div className="lv-ph"><span className="sect">{tt('live.connections')}</span></div>
           <div className="thead" style={{ gridTemplateColumns: 'minmax(120px,1fr) 44px minmax(70px,.8fr) 86px 44px 48px' }}>
-            <div>Bağlantı</div><div>Taşıma</div><div>Kullanım</div><div className="right">Çağrı / limit</div><div className="right">ASR %</div><div className="right">PDD sn</div>
+            <div>{tt('live.connection')}</div><div>{tt('live.transport')}</div><div>{tt('live.usage')}</div><div className="right">{tt('live.callsLimit')}</div><div className="right">{tt('live.asrPct')}</div><div className="right">{tt('live.pddSec')}</div>
           </div>
           {conns.map((c) => {
             const used = c.max_calls ? c.calls / c.max_calls : 0
@@ -440,13 +442,13 @@ export function LiveMonitor() {
               </div>
             )
           })}
-          {!conns.length && <Empty title="Bağlantı yok" desc="Limiti olan ya da son 60 saniyede trafik taşıyan sağlayıcı bağlantısı yok." />}
+          {!conns.length && <Empty title={tt('live.noConnections')} desc={tt('live.noConnectionsDesc')} />}
         </section>
 
         <section className="card clip lv-t">
-          <div className="lv-ph"><span className="sect">Müşteri yükü</span></div>
+          <div className="lv-ph"><span className="sect">{tt('live.clientLoad')}</span></div>
           <div className="thead" style={{ gridTemplateColumns: 'minmax(130px,1fr) minmax(70px,.8fr) 90px 80px' }}>
-            <div>Müşteri</div><div>Kullanım</div><div className="right">Çağrı / limit</div><div className="right">CPS / limit</div>
+            <div>{tt('live.client')}</div><div>{tt('live.usage')}</div><div className="right">{tt('live.callsLimit')}</div><div className="right">{tt('live.cpsLimit')}</div>
           </div>
           {clients.map((c) => {
             const used = c.max_calls ? c.calls / c.max_calls : 0
@@ -459,7 +461,7 @@ export function LiveMonitor() {
               </div>
             )
           })}
-          {!clients.length && <Empty title="Müşteri yok" desc="Limiti olan ya da son 60 saniyede çağrı gönderen müşteri yok." />}
+          {!clients.length && <Empty title={tt('live.noClients')} desc={tt('live.noClientsDesc')} />}
         </section>
       </div>
     </div>

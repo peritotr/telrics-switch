@@ -4,6 +4,7 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { api, useLookup, type ApiError, type Paged } from '../lib/api'
 import { dt, num } from '../lib/format'
+import { getLang, t } from '../lib/i18n'
 import { useSession } from '../lib/session'
 import { Badge, DataTable, Pager, errorText, useUI, type Col } from '../ui/kit'
 
@@ -18,8 +19,7 @@ interface Page {
 }
 
 const PAGE = 50
-const regionNames = new Intl.DisplayNames(['tr'], { type: 'region' })
-const country = (cc: string) => { try { return cc ? regionNames.of(cc) ?? cc : '—' } catch { return cc } }
+const country = (cc: string) => { try { return cc ? new Intl.DisplayNames([getLang()], { type: 'region' }).of(cc) ?? cc : '—' } catch { return cc } }
 
 /** Elapsed time as m:ss or h:mm:ss. */
 function clock(ms: number) {
@@ -48,42 +48,42 @@ export function LiveCalls() {
 
   const hangup = async (c: LiveCall) => {
     const ok = await ui.confirm({
-      title: 'Çağrı kapatılsın mı?',
-      body: `${c.src || 'Bilinmeyen arayan'} → ${c.dst} çağrısı iki tarafta da hemen sonlandırılır. O ana kadarki süre faturalanır.`,
-      action: 'Çağrıyı kapat', danger: true,
+      title: t('live.hangupTitle'),
+      body: t('live.hangupBody', { src: c.src || t('live.unknownCaller'), dst: c.dst }),
+      action: t('live.hangup'), danger: true,
     })
     if (!ok) return
     try {
       await api.post('/v1/live/calls/hangup', { call_id: c.call_id })
-      ui.toast('Çağrı kapatıldı')
+      ui.toast(t('live.hungUp'))
       q.refetch()
     } catch (e) {
       const err = e as ApiError
-      ui.toast(err.status === 404 ? 'Çağrı zaten bitmiş' : err.status === 409 ? 'Çağrı henüz cevaplanmadı' : errorText(err))
+      ui.toast(err.status === 404 ? t('live.alreadyEnded') : err.status === 409 ? t('live.notAnswered') : errorText(err))
       q.refetch()
     }
   }
 
   const cols: Col<LiveCall>[] = [
-    { label: 'Başlangıç', width: '140px', mono: true, render: (c) => dt(c.start_at, true) },
-    { label: 'Durum', width: '96px', render: (c) => c.answer_at ? <Badge tone="ok">Konuşuyor</Badge> : c.ring_at ? <Badge tone="acc">Çalıyor</Badge> : <Badge>Kuruluyor</Badge> },
-    { label: 'Süre', width: '56px', align: 'right', mono: true, render: (c) => clock(now - Date.parse(c.answer_at ?? c.start_at)) },
-    { label: 'Arayan', width: '100px', mono: true, render: (c) => c.src || '—' },
-    { label: 'Aranan', width: '120px', mono: true, render: (c) => c.dst },
-    { label: 'Ülke', width: '88px', render: (c) => country(c.country) },
-    { label: 'Müşteri', width: 'minmax(110px,1fr)', render: (c) => data?.clients[c.client_id] ?? `#${c.client_id}` },
-    { label: 'Sağlayıcı · bağlantı', width: 'minmax(130px,1fr)', render: (c) => {
+    { label: t('live.start'), width: '140px', mono: true, render: (c) => dt(c.start_at, true) },
+    { label: t('live.state'), width: '96px', render: (c) => c.answer_at ? <Badge tone="ok">{t('live.talking')}</Badge> : c.ring_at ? <Badge tone="acc">{t('live.ringing')}</Badge> : <Badge>{t('live.setup')}</Badge> },
+    { label: t('live.duration'), width: '56px', align: 'right', mono: true, render: (c) => clock(now - Date.parse(c.answer_at ?? c.start_at)) },
+    { label: t('live.src'), width: '100px', mono: true, render: (c) => c.src || '—' },
+    { label: t('live.dst'), width: '120px', mono: true, render: (c) => c.dst },
+    { label: t('live.country'), width: '88px', render: (c) => country(c.country) },
+    { label: t('live.client'), width: 'minmax(110px,1fr)', render: (c) => data?.clients[c.client_id] ?? `#${c.client_id}` },
+    { label: t('live.vendorConnection'), width: 'minmax(130px,1fr)', render: (c) => {
       const v = data?.connections[c.connection_id]
       return v ? <>{v.vendor} · <span className="mono">{v.name}</span></> : `#${c.connection_id}`
     } },
-    { label: 'Deneme', width: '50px', align: 'right', mono: true, render: (c) => c.leg },
+    { label: t('live.attempt'), width: '50px', align: 'right', mono: true, render: (c) => c.leg },
     // The trace is read by Call-ID like any other: whoever sees this list
     // sees every client, so the trace API's rule lets them in (mayTrace).
     { label: '', width: '84px', align: 'right', render: (c) => (
       <span className="row" style={{ gap: 6, justifyContent: 'flex-end' }}>
-        <Link className="btn inline" style={{ display: 'inline-flex', alignItems: 'center' }} title="Bu çağrının şimdiye kadarki SIP iletileri"
-          to={`/tools/trace?call_id=${encodeURIComponent(c.call_id)}`}>İz</Link>
-        {canEdit && c.answer_at && <button className="btn inline danger" onClick={() => hangup(c)}>Kapat</button>}
+        <Link className="btn inline" style={{ display: 'inline-flex', alignItems: 'center' }} title={t('live.traceHint')}
+          to={`/tools/trace?call_id=${encodeURIComponent(c.call_id)}`}>{t('live.trace')}</Link>
+        {canEdit && c.answer_at && <button className="btn inline danger" onClick={() => hangup(c)}>{t('live.end')}</button>}
       </span>
     ) },
   ]
@@ -92,23 +92,23 @@ export function LiveCalls() {
   return (
     <div className="page">
       <div className="row wrap" style={{ gap: 12 }}>
-        <h1>Canlı çağrılar</h1>
-        <span className={'lv-pill' + (paused ? ' off' : '')}><i />{paused ? 'Duraklatıldı' : 'Canlı · 2 sn'}</span>
-        <span className="lv-note">{data ? `${num(total)} çağrı sürüyor` : ''}</span>
+        <h1>{t('live.callsTitle')}</h1>
+        <span className={'lv-pill' + (paused ? ' off' : '')}><i />{paused ? t('live.paused') : t('live.liveEvery', { n: 2 })}</span>
+        <span className="lv-note">{data ? t('live.ongoing', { n: num(total) }) : ''}</span>
         <div className="grow" />
-        <button className="btn" onClick={() => setPaused(!paused)}>{paused ? 'Sürdür' : 'Duraklat'}</button>
+        <button className="btn" onClick={() => setPaused(!paused)}>{paused ? t('live.resume') : t('live.pause')}</button>
       </div>
       <div className="card clip">
         <div className="filters">
-          <label className="field"><span className="label">Müşteri</span>
+          <label className="field"><span className="label">{t('live.client')}</span>
             <select className="select" value={client} onChange={(e) => { setClient(e.target.value); setPage(0) }}>
-              <option value="">Tümü</option>{clients.rows.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              <option value="">{t('live.all')}</option>{clients.rows.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select></label>
         </div>
         <DataTable cols={cols} rows={rows} minWidth={1100} gap={14} loading={q.isPending && !paused} error={q.error as ApiError | null}
-          onRetry={q.refetch} errorTitle="Canlı çağrılar yüklenemedi"
-          empty={{ title: 'Şu anda süren çağrı yok', desc: client ? 'Bu müşterinin süren çağrısı yok. Tüm müşterileri görmek için filtreyi kaldırın.' : 'Yeni çağrılar kuruldukça burada görünür.' }} />
-        <Pager p={pager} noun="çağrı" />
+          onRetry={q.refetch} errorTitle={t('live.callsError')}
+          empty={{ title: t('live.callsEmpty'), desc: client ? t('live.callsEmptyClient') : t('live.callsEmptyDesc') }} />
+        <Pager p={pager} noun={t('calls.noun')} />
       </div>
     </div>
   )

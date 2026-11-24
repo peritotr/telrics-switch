@@ -1,0 +1,41 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Low balance alerts (BalanceAlerts.tsx).
+export const tr = {
+  'alerts.open': 'Açık',
+  'alerts.cleared': 'Kapananlar',
+  'alerts.client': 'Müşteri',
+  'alerts.threshold': 'Eşik',
+  'alerts.balanceAtAlert': 'Uyarı anındaki bakiye',
+  'alerts.balanceNow': 'Güncel bakiye',
+  'alerts.raised': 'Açıldı',
+  'alerts.status': 'Durum',
+  'alerts.clearedAt': 'Kapandı',
+  'alerts.title': 'Düşük bakiye uyarıları',
+  'alerts.desc': 'Bakiyesi, müşteri kaydında belirlenen eşiğe ya da altına inen müşteriler. Bakiye eşiğin üstüne çıkınca uyarı kendiliğinden kapanır.',
+  'alerts.loadError': 'Uyarılar yüklenemedi',
+  'alerts.noOpen': 'Açık uyarı yok',
+  'alerts.noOpenDesc': 'Eşiği tanımlı müşterilerin hepsinin bakiyesi eşiğin üstünde. Eşik, müşteri detayındaki Genel sekmesinden girilir.',
+  'alerts.noCleared': 'Kapanmış uyarı yok',
+  'alerts.noClearedDesc': 'Bakiyesi eşiğin altına inip yeniden üstüne çıkan müşteri olmadı.',
+  'alerts.noun': 'uyarı',
+}
+
+export const en: Record<keyof typeof tr, string> = {
+  'alerts.open': 'Open',
+  'alerts.cleared': 'Cleared',
+  'alerts.client': 'Client',
+  'alerts.threshold': 'Threshold',
+  'alerts.balanceAtAlert': 'Balance at alert',
+  'alerts.balanceNow': 'Current balance',
+  'alerts.raised': 'Raised',
+  'alerts.status': 'Status',
+  'alerts.clearedAt': 'Cleared',
+  'alerts.title': 'Low balance alerts',
+  'alerts.desc': 'Clients whose balance has fallen to or below the threshold set on the client record. The alert clears by itself once the balance rises above the threshold.',
+  'alerts.loadError': 'Could not load the alerts',
+  'alerts.noOpen': 'No open alerts',
+  'alerts.noOpenDesc': 'Every client with a threshold has a balance above it. The threshold is set on the General tab of the client’s page.',
+  'alerts.noCleared': 'No cleared alerts',
+  'alerts.noClearedDesc': 'No client’s balance has fallen below the threshold and risen above it again.',
+  'alerts.noun': 'alerts',
+}

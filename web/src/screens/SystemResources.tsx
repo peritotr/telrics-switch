@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { useQuery } from '@tanstack/react-query'
 import { api, type ApiError, type Row } from '../lib/api'
-import { num } from '../lib/format'
+import { dec, num } from '../lib/format'
+import { t } from '../lib/i18n'
 import { Badge, DataTable, PageHead, errorText, type Col } from '../ui/kit'
 
 interface Sample { at: string; cpu_permille: number; load_milli: number; mem_total: number; mem_available: number; rx_bps: number; tx_bps: number }
@@ -11,10 +12,11 @@ interface SystemData {
   services: { name: string; up: boolean; ms: number; note?: string }[]
 }
 
-const comma = (v: number, digits = 1) => v.toFixed(digits).replace('.', ',')
+const comma = (v: number, digits = 1) => dec(v, digits)
+const pct = (v: number) => t('system.pct', { v: comma(v) })
 /** A number of bytes in the largest unit that keeps it readable. */
 function bytes(v: number, perSecond = false): [string, string] {
-  const units = perSecond ? ['bit/sn', 'kbit/sn', 'Mbit/sn', 'Gbit/sn'] : ['B', 'KB', 'MB', 'GB', 'TB']
+  const units = perSecond ? [t('system.bitps'), t('system.kbitps'), t('system.mbitps'), t('system.gbitps')] : ['B', 'KB', 'MB', 'GB', 'TB']
   let x = perSecond ? v * 8 : v, i = 0
   const step = perSecond ? 1000 : 1024
   while (x >= step && i < units.length - 1) { x /= step; i++ }
@@ -22,7 +24,7 @@ function bytes(v: number, perSecond = false): [string, string] {
 }
 function uptime(sec: number) {
   const d = Math.floor(sec / 86400), h = Math.floor((sec % 86400) / 3600), m = Math.floor((sec % 3600) / 60)
-  return d ? `${d} gün ${h} sa` : h ? `${h} sa ${m} dk` : `${m} dk`
+  return d ? t('system.upDays', { d, h }) : h ? t('system.upHours', { h, m }) : t('system.upMinutes', { m })
 }
 const tone = (pct: number) => (pct >= 90 ? 'var(--bad)' : pct >= 75 ? 'var(--warn)' : 'var(--tx)')
 
@@ -59,45 +61,45 @@ export function SystemResources() {
   const down = d?.services.filter((s) => !s.up).length ?? 0
 
   const serviceCols: Col<Row>[] = [
-    { label: 'Servis', width: 'minmax(200px,1fr)', render: (s) => s.name },
-    { label: 'Durum', width: '160px', render: (s) => (s.up ? <Badge tone="ok">Çalışıyor</Badge> : <Badge tone="bad">{s.note ?? 'Cevap vermiyor'}</Badge>) },
-    { label: 'Cevap süresi', width: '120px', align: 'right', mono: true, render: (s) => (s.up ? `${num(s.ms)} ms` : '—') },
+    { label: t('system.service'), width: 'minmax(200px,1fr)', render: (s) => s.name },
+    { label: t('system.status'), width: '160px', render: (s) => (s.up ? <Badge tone="ok">{t('system.up')}</Badge> : <Badge tone="bad">{s.note ?? t('system.down')}</Badge>) },
+    { label: t('system.responseTime'), width: '120px', align: 'right', mono: true, render: (s) => (s.up ? `${num(s.ms)} ms` : '—') },
   ]
   const diskCols: Col<Row>[] = [
-    { label: 'Yol', width: 'minmax(200px,1fr)', mono: true, render: (x) => x.path },
-    { label: 'Dolu', width: '160px', align: 'right', mono: true, render: (x) => { const p = x.total ? (100 * (x.total - x.free)) / x.total : 0; return <span style={{ color: tone(p) }}>%{comma(p)}</span> } },
-    { label: 'Boş', width: '140px', align: 'right', mono: true, render: (x) => bytes(x.free).join(' ') },
-    { label: 'Toplam', width: '140px', align: 'right', mono: true, render: (x) => bytes(x.total).join(' ') },
+    { label: t('system.path'), width: 'minmax(200px,1fr)', mono: true, render: (x) => x.path },
+    { label: t('system.used'), width: '160px', align: 'right', mono: true, render: (x) => { const p = x.total ? (100 * (x.total - x.free)) / x.total : 0; return <span style={{ color: tone(p) }}>{pct(p)}</span> } },
+    { label: t('system.free'), width: '140px', align: 'right', mono: true, render: (x) => bytes(x.free).join(' ') },
+    { label: t('system.total'), width: '140px', align: 'right', mono: true, render: (x) => bytes(x.total).join(' ') },
   ]
 
   return (
     <div className="page">
-      <PageHead title="Sistem kaynakları" desc="Sunucunun işlemci, bellek, disk ve ağ kullanımı ile servislerin durumu. Beş saniyede bir yenilenir; grafikler son on dakikayı gösterir." />
-      {q.error && <div className="banner bad">Sistem durumu alınamadı: {errorText(q.error as ApiError)}</div>}
-      {d && down > 0 && <div className="banner bad">{down} servis cevap vermiyor. Çağrılar etkilenebilir; aşağıdaki listeye bakın.</div>}
-      {m && !m.supported && <div className="banner">Bu sunucuda işlemci, bellek ve ağ ölçümleri okunamıyor (yalnızca Linux'ta okunur). Disk ve servis durumu aşağıdadır.</div>}
+      <PageHead title={t('system.title')} desc={t('system.desc')} />
+      {q.error && <div className="banner bad">{t('system.loadFailed', { error: errorText(q.error as ApiError) })}</div>}
+      {d && down > 0 && <div className="banner bad">{t('system.servicesDown', { n: down })}</div>}
+      {m && !m.supported && <div className="banner">{t('system.unsupported')}</div>}
       {m?.supported && (
         <div className="stats" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(210px,1fr))' }}>
-          <Tile label="İşlemci" value={now ? `%${comma(now.cpu_permille / 10)}` : '—'} color={now ? tone(now.cpu_permille / 10) : undefined} sub={`${m.cores} çekirdek`}>
+          <Tile label={t('system.cpu')} value={now ? pct(now.cpu_permille / 10) : '—'} color={now ? tone(now.cpu_permille / 10) : undefined} sub={t('system.cores', { n: m.cores })}>
             <Spark values={hist.map((s) => s.cpu_permille)} top={1000} /></Tile>
-          <Tile label="Yük (1 dk)" value={now ? comma(now.load_milli / 1000, 2) : '—'} color={now && m.cores ? tone((100 * now.load_milli) / 1000 / m.cores) : undefined} sub={`çalışma süresi ${uptime(m.uptime_sec)}`}>
+          <Tile label={t('system.load')} value={now ? comma(now.load_milli / 1000, 2) : '—'} color={now && m.cores ? tone((100 * now.load_milli) / 1000 / m.cores) : undefined} sub={t('system.uptime', { t: uptime(m.uptime_sec) })}>
             <Spark values={hist.map((s) => s.load_milli)} top={Math.max(m.cores * 1000, ...hist.map((s) => s.load_milli))} /></Tile>
-          <Tile label="Bellek" value={now ? `%${comma(memPct)}` : '—'} color={now ? tone(memPct) : undefined} sub={now ? `${bytes(now.mem_available).join(' ')} boş / ${bytes(now.mem_total).join(' ')}` : ''}>
+          <Tile label={t('system.memory')} value={now ? pct(memPct) : '—'} color={now ? tone(memPct) : undefined} sub={now ? t('system.memFree', { free: bytes(now.mem_available).join(' '), total: bytes(now.mem_total).join(' ') }) : ''}>
             <Spark values={hist.map((s) => s.mem_total - s.mem_available)} top={now?.mem_total ?? 1} /></Tile>
-          <Tile label="Ağ, gelen" value={now ? bytes(now.rx_bps, true)[0] : '—'} unit={now ? bytes(now.rx_bps, true)[1] : ''} sub="sunucunun kendi arayüzleri">
+          <Tile label={t('system.netIn')} value={now ? bytes(now.rx_bps, true)[0] : '—'} unit={now ? bytes(now.rx_bps, true)[1] : ''} sub={t('system.netInSub')}>
             <Spark values={hist.map((s) => s.rx_bps)} top={netTop} /></Tile>
-          <Tile label="Ağ, giden" value={now ? bytes(now.tx_bps, true)[0] : '—'} unit={now ? bytes(now.tx_bps, true)[1] : ''} sub="aynı ölçekte">
+          <Tile label={t('system.netOut')} value={now ? bytes(now.tx_bps, true)[0] : '—'} unit={now ? bytes(now.tx_bps, true)[1] : ''} sub={t('system.netOutSub')}>
             <Spark values={hist.map((s) => s.tx_bps)} top={netTop} /></Tile>
         </div>
       )}
       <div className="card clip">
-        <div className="sect" style={{ padding: '12px 16px', borderBottom: '1px solid var(--line)' }}>Servisler</div>
+        <div className="sect" style={{ padding: '12px 16px', borderBottom: '1px solid var(--line)' }}>{t('system.services')}</div>
         <DataTable cols={serviceCols} rows={(d?.services ?? []) as Row[]} minWidth={520} loading={q.isPending} />
       </div>
       <div className="card clip">
-        <div className="sect" style={{ padding: '12px 16px', borderBottom: '1px solid var(--line)' }}>Diskler</div>
+        <div className="sect" style={{ padding: '12px 16px', borderBottom: '1px solid var(--line)' }}>{t('system.disks')}</div>
         <DataTable cols={diskCols} rows={(m?.disks ?? []) as Row[]} minWidth={640} loading={q.isPending}
-          empty={{ title: 'Disk bilgisi yok', desc: 'Gösterilecek yol tanımlı değil.' }} />
+          empty={{ title: t('system.noDisks'), desc: t('system.noDisksDesc') }} />
       </div>
     </div>
   )

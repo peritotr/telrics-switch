@@ -18,7 +18,7 @@ Yönetim arayüzü Türkçe, tutarlı ve Enterprise ekranlarıyla genişletilebi
 
 ## Sonuçları
 
-- Arayüz Türkçedir; `text-transform: uppercase` kullanılmaz.
+- ~~Arayüz Türkçedir~~ (yerini aldı: ADR-0049, panel Türkçe ve İngilizce; varsayılan Türkçe); `text-transform: uppercase` kullanılmaz.
 - Oturum belirteci yalnızca bellekte tutulur; tarayıcı deposuna yazılmaz.
 - Listeler sunucu taraflı sayfalanır; büyük tablolar istemciye toplu çekilmez.
 - Tutarlar `web/src/lib/format.ts` ile biçimlenir; kayan noktayla hesap yapılmaz.

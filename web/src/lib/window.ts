@@ -3,9 +3,11 @@
 // conversion between what the form holds and what the API takes (a set of
 // day bits, Monday = 1 up to Sunday = 64, and minutes since midnight).
 import type { FieldDef } from '../ui/kit'
+import { t } from './i18n'
 
-const presets = [{ value: '127', label: 'Her gün' }, { value: '31', label: 'Hafta içi' }, { value: '96', label: 'Hafta sonu' }]
-const names = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz']
+// Functions, not constants: the labels follow the interface language.
+const presets = () => [{ value: '127', label: t('window.everyDay') }, { value: '31', label: t('window.weekdays') }, { value: '96', label: t('window.weekend') }]
+const names = () => [t('window.mon'), t('window.tue'), t('window.wed'), t('window.thu'), t('window.fri'), t('window.sat'), t('window.sun')]
 
 /** Minutes since midnight as HH:MM. */
 export const clock = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
@@ -16,8 +18,8 @@ const minutes = (s: string): number | null => {
 
 /** The days of a set, in words. */
 function daysLabel(days: number) {
-  const preset = presets.find((p) => Number(p.value) === days)
-  return preset ? preset.label : names.filter((_, i) => days & (1 << i)).join(', ')
+  const preset = presets().find((p) => Number(p.value) === days)
+  return preset ? preset.label : names().filter((_, i) => days & (1 << i)).join(', ')
 }
 
 /** A row's window in words; "" when it has none. */
@@ -29,11 +31,11 @@ export function windowLabel(r: Record<string, any>) {
 
 /** Form fields for a window; days is the set a row being edited has. */
 export function windowFields(zone: string, days?: number): FieldDef[] {
-  const custom = days != null && !presets.some((p) => Number(p.value) === days) ? [{ value: String(days), label: daysLabel(days) }] : []
+  const custom = days != null && !presets().some((p) => Number(p.value) === days) ? [{ value: String(days), label: daysLabel(days) }] : []
   return [
-    { key: 'days', label: 'Günler', type: 'seg', options: [...presets, ...custom], span: true },
-    { key: 'time_from', label: 'Saat başlangıç', type: 'mono', placeholder: '22:00', hint: `${zone} saatiyle. İkisi de boş = tüm gün` },
-    { key: 'time_to', label: 'Saat bitiş', type: 'mono', placeholder: '06:00', hint: 'Başlangıçtan küçükse gece yarısını aşar' },
+    { key: 'days', label: t('window.days'), type: 'seg', options: [...presets(), ...custom], span: true },
+    { key: 'time_from', label: t('window.from'), type: 'mono', placeholder: '22:00', hint: t('window.fromHint', { zone }) },
+    { key: 'time_to', label: t('window.to'), type: 'mono', placeholder: '06:00', hint: t('window.toHint') },
   ]
 }
 
@@ -48,10 +50,10 @@ export function windowInitial(r?: Record<string, any>) {
 export function windowErrors(v: Record<string, any>) {
   const e: Record<string, string> = {}
   const from = String(v.time_from ?? '').trim(), to = String(v.time_to ?? '').trim()
-  if (from && minutes(from) == null) e.time_from = 'SS:DD biçiminde girin, ör. 22:00.'
-  if (to && minutes(to) == null) e.time_to = 'SS:DD biçiminde girin, ör. 06:00.'
-  if (!e.time_from && !e.time_to && !!from !== !!to) e[from ? 'time_to' : 'time_from'] = 'Başlangıç ve bitiş birlikte girilir.'
-  if (!e.time_from && !e.time_to && from && minutes(from) === minutes(to)) e.time_to = 'Bitiş başlangıçtan farklı olmalı.'
+  if (from && minutes(from) == null) e.time_from = t('window.errFrom')
+  if (to && minutes(to) == null) e.time_to = t('window.errTo')
+  if (!e.time_from && !e.time_to && !!from !== !!to) e[from ? 'time_to' : 'time_from'] = t('window.errPair')
+  if (!e.time_from && !e.time_to && from && minutes(from) === minutes(to)) e.time_to = t('window.errSame')
   return e
 }
 

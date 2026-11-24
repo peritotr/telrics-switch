@@ -1,182 +1,196 @@
 # Telrics Switch — Community
 
-Toptan (wholesale) ses trafiği taşıyan operatörler için **Class 4 SIP anahtarlama platformu (softswitch)**: yönlendirme, ücretlendirme ve faturalama, yönetim API'si ve yönetim paneli tek üründe. SIP sinyalleşmesini [OpenSIPS](https://opensips.org/), sesi [rtpengine](https://github.com/sipwise/rtpengine) taşır; bütün iş mantığı onlarla yalnızca ağ üzerinden konuşan Go servislerindedir.
+**English** · [Türkçe](README.tr.md)
 
-Bu depo ürünün açık kaynak **Community** sürümüdür ([AGPL-3.0-only](LICENSE)): tek sunucuda, tek hesapla çalışan, tek başına kullanılabilir bir üründür. Belgeler Türkçedir ([`docs/`](docs/)).
+A **Class 4 SIP softswitch** for carriers that move wholesale voice traffic: routing, rating and billing, a management API and an admin panel in one product. [OpenSIPS](https://opensips.org/) carries the SIP signalling and [rtpengine](https://github.com/sipwise/rtpengine) the media; all business logic lives in Go services that talk to them over the network only.
 
-## In English
+This repository is the open-source **Community** edition ([AGPL-3.0-only](LICENSE)): a complete product that runs on one server with one account. The admin panel is available in English and Turkish; the documentation in [`docs/`](docs/) is in Turkish.
 
-Telrics Switch Community is an open-source Class 4 SIP softswitch for wholesale voice carriers. It does prefix and least-cost routing with weighted distribution and failover, real-time prepaid/postpaid rating with balance reservation, per-customer, per-trunk and per-vendor call and CPS limits, call detail records that are never lost, reports, a REST API described by OpenAPI, and a React admin panel. OpenSIPS carries the SIP signalling and rtpengine the media; all business logic lives in Go services (`route-engine`, `rater`, `api`, `trace-collector`) that talk to them over the network only, through a versioned interface. Configuration and balances are in PostgreSQL, counters and reservations in Redis, call records go through NATS JetStream and are copied to ClickHouse.
+![Live monitor: concurrent calls, CPS, ASR, ACD, PDD, NER and a map of destinations](docs/images/en/live-monitor.png)
+<sub>Live monitor with lab traffic</sub>
 
-**Status:** the single-node product is feature-complete for its first release and covered by unit, API and SIPp call tests, but all measurements so far come from a developer laptop (Docker on macOS). Load testing on a Linux server, kernel-mode media forwarding and high availability have not been done; the production install's host-network mode has not yet been run on a real server. The capacity target (20,000 concurrent calls, 1,000 CPS) is a target, not a measured result. Clustering and multi-tenant features belong to a separate commercial Enterprise edition built on top of this repository. Contributions require a signed CLA (`CONTRIBUTING.md`); report vulnerabilities privately (`SECURITY.md`). Documentation is in Turkish.
+## Status
 
-## Durum
+- **Done:** lab and load-test rig (phase 0), routing core (phase 1), rating, limits and balance reservation (phase 2), management API and panel (phase 3); TLS/SRTP, registration (REGISTER) and NAT traversal, IPv6, transcoding, call trace, monitoring and a single-server install. Details: [`docs/03-yol-haritasi.md`](docs/03-yol-haritasi.md); status feature by feature: [`docs/05-ozellik-katalogu.md`](docs/05-ozellik-katalogu.md).
+- **Measured in the lab only:** every result so far comes from a developer machine (macOS, Docker). Load testing on a Linux server, kernel-mode media forwarding and high availability have not been done yet (phase 4).
+- **The production layout is new:** the single-server install is tested end to end on a private Docker network (`make prod-smoke`), but the host-network layout that production uses for the call path (`docker-compose.host.yml`) is only now being run on a real server for the first time. Certificates from a public CA, a real NAT router and IPv6 on a real server are also still to be tried. Read "Bilinen sınırlar" (known limits) in [`docs/09-kurulum.md`](docs/09-kurulum.md) before going to production.
+- **Not yet available:** SSO, number portability (MNP/LRN) lookups, STIR/SHAKEN, a ready-made Grafana dashboard. Open work: [`docs/TASKS.md`](docs/TASKS.md).
 
-- **Tamamlanan:** laboratuvar ve yük testi düzeneği (Faz 0), yönlendirme çekirdeği (Faz 1), ücretlendirme, limitler ve bakiye rezervasyonu (Faz 2), yönetim API'si ve panel (Faz 3); TLS/SRTP, kayıt (REGISTER) ve adres çevirisi (NAT), IPv6, kodek çevirisi, çağrı izi, izleme ve tek sunucu kurulumu. Ayrıntı: [`docs/03-yol-haritasi.md`](docs/03-yol-haritasi.md); özellik özellik durum: [`docs/05-ozellik-katalogu.md`](docs/05-ozellik-katalogu.md).
-- **Ölçümler yalnızca laboratuvarda:** bütün sonuçlar bir geliştirici makinesinde (macOS, Docker) alındı. Gerçek Linux sunucuda yük testi, çekirdek (kernel) içi ses aktarımı ve yüksek erişilebilirlik henüz yapılmadı (Faz 4).
-- **Üretim kurulumu denenmemiş bir yerleşim içerir:** tek sunucu kurulumu özel bir Docker ağında uçtan uca sınanıyor (`make prod-smoke`), ama üretimde çağrı yolunun kullandığı sunucunun ağı (`docker-compose.host.yml`) gerçek bir sunucuda henüz çalıştırılmadı. Gerçek bir sertifika otoritesiyle sertifika alma, gerçek bir NAT yönlendiricisi ve IPv6'nın gerçek sunucuda denenmesi de bekliyor. Üretimde kullanmadan önce [`docs/09-kurulum.md`](docs/09-kurulum.md) içindeki "Bilinen sınırlar" bölümünü okuyun.
-- **Henüz olmayanlar:** SSO, numara taşınabilirliği (MNP/LRN) sorgusu, STIR/SHAKEN, hazır Grafana panosu. Kalan işler: [`docs/TASKS.md`](docs/TASKS.md).
+## Features
 
-## Özellikler
+Each item is marked "available" in [`docs/05-ozellik-katalogu.md`](docs/05-ozellik-katalogu.md) and covered by tests; limits are written down in the relevant document.
 
-Hepsi [`docs/05-ozellik-katalogu.md`](docs/05-ozellik-katalogu.md) içinde "Var" olarak işaretli ve testle doğrulanmıştır; sınırları ilgili belgede yazılıdır.
+**Routing**
+- Longest-prefix match; LCR (cheapest first) and priority ordering; loss protection (a route whose buy rate exceeds the sell rate is skipped).
+- Weighted (percentage) distribution between routes of the same step; failover to the next route by SIP response code (configurable per connection).
+- Routes and rates by day of week and time of day, time zones, public-holiday calendar.
+- Number manipulation per vendor connection and per client trunk; caller ID (CLI) rules: block / allow / rewrite / anonymise, `P-Asserted-Identity` and `Privacy` support.
+- Route simulation (`POST /v1/route/simulate`).
 
-**Yönlendirme**
-- Önek tabanlı en uzun eşleşme; LCR (en ucuz önce) ve öncelik sıralaması; zarar koruması (alış > satış ise rota elenir).
-- Aynı basamaktaki rotalar arasında ağırlıklı (yüzde) dağıtım; hata koduna göre sıradaki rotaya geçiş (bağlantı başına ayarlanabilir).
-- Güne ve saate göre rota ve fiyat, saat dilimi, resmî tatil takvimi.
-- Numara dönüşümü (sağlayıcı bağlantısı ve müşteri trunk'ı başına), arayan numara (CLI) kuralları: engelle / izin ver / dönüştür / gizle, `P-Asserted-Identity` ve `Privacy` desteği.
-- Rota simülasyonu (`POST /v1/route/simulate`).
+**Rating and balance**
+- Sell and buy tariffs: initial and increment billing, connection fee, free seconds, versions with effective dates, CSV upload; tariffs with millions of rates (the engine re-reads only the prefixes that changed).
+- Real-time balance reservation: a call reserves money in 60-second steps and the engine hangs it up before the money runs out, so balances are never overdrawn.
+- Bundled minutes, multiple currencies with exchange rates (optionally from the European Central Bank), low-balance warnings and e-mails.
+- Money is an integer everywhere (`int64`, millionths of a unit); no floating point.
 
-**Ücretlendirme ve bakiye**
-- Satış ve alış tarifeleri: ilk süre ve artım, bağlantı ücreti, ücretsiz süre, geçerlilik tarihli sürümler, CSV yükleme; milyonlarca fiyatlı tarife (motor yalnızca değişen önekleri yeniden okur).
-- Gerçek zamanlı bakiye rezervasyonu: çağrı 60 saniyelik adımlarla para ayırır, para bitmeden çağrı motor tarafından kapatılır; bakiye aşılmaz.
-- Paket dakikalar, çoklu para birimi ve kur dönüşümü (isteğe bağlı olarak Avrupa Merkez Bankası kurlarıyla), düşük bakiye uyarısı ve e-postası.
-- Para her yerde tamsayıdır (`int64`, milyonda bir birim); kayan nokta yoktur.
+**SIP and media** ([`docs/08-cagri-arayuzu.md`](docs/08-cagri-arayuzu.md))
+- Client trunks are identified by address (several addresses and networks, IPv4 and IPv6, tech prefix) or by username and password (Digest); registration (REGISTER) and endpoints behind NAT.
+- Concurrent-call and CPS limits per client, trunk and vendor connection (in Redis, in one atomic script).
+- Topology hiding; TLS signalling and SRTP media; vendor certificate name checks; Digest authentication and registration towards vendors; vendor health checks (SIP OPTIONS).
+- Re-INVITE, offerless INVITE, early media and PRACK, T.38 and SIP INFO pass through; calls whose media stops are torn down; transcoding on a single server (off by default).
 
-**SIP ve medya** ([`docs/08-cagri-arayuzu.md`](docs/08-cagri-arayuzu.md))
-- Müşteri trunk'ı adresle (birden çok adres ve ağ, IPv4 ve IPv6, teknik önek) ya da kullanıcı adı/parolayla (Digest) tanınır; kayıt (REGISTER) ve NAT arkasındaki uçlar.
-- Müşteri, trunk ve sağlayıcı bağlantısı başına eşzamanlı çağrı ve CPS limitleri (Redis'te, tek atomik betikle).
-- Topoloji gizleme; TLS sinyalleşme ve SRTP ses; sağlayıcı sertifikasında ad denetimi; sağlayıcıya Digest ile giriş ve kayıt; sağlayıcı yoklaması (SIP OPTIONS).
-- Çağrı içi yeni teklif (re-INVITE), teklifsiz INVITE, erken medya ve PRACK, T.38 ve SIP INFO olduğu gibi geçer; sesi kesilen (ölü) çağrı kapatılır; tek sunucuda kodek çevirisi (varsayılan kapalı).
+**Call records, reports and monitoring** ([`docs/10-izleme.md`](docs/10-izleme.md))
+- Every attempt is its own CDR leg; records travel through NATS JetStream at least once and wait in the engine's on-disk journal while NATS is down. PostgreSQL is the system of record, ClickHouse a copy.
+- ASR, ACD, PDD, NER, revenue, cost and margin reports; CSV export; scheduled report e-mails; live monitor and live calls (with hang-up).
+- Call trace: SIP signalling is copied over HEP to the install's own collector and stored in ClickHouse; the panel draws the ladder diagram and downloads pcap (signalling only; audio is never recorded).
+- Prometheus metrics and alert rules (Alertmanager), application-level firewall, system resources in the panel.
 
-**Çağrı kayıtları, raporlar ve izleme** ([`docs/10-izleme.md`](docs/10-izleme.md))
-- Her deneme ayrı bir CDR bacağıdır; kayıtlar NATS JetStream üzerinden en-az-bir-kez taşınır, NATS kesikken motorun diskindeki günlükte bekler. PostgreSQL asıl kayıttır, ClickHouse kopyadır.
-- ASR, ACD, PDD, NER, gelir, maliyet ve kâr raporları; CSV dışa aktarma; zamanlanmış rapor e-postaları; canlı izleme ve canlı çağrılar (kapatma dahil).
-- Çağrı izi: SIP sinyalleşmesi HEP ile kurulumun kendi toplayıcısına, oradan ClickHouse'a; panelde akış diyagramı ve pcap indirme (yalnızca sinyalleşme; ses kaydı yapılmaz).
-- Prometheus ölçüleri ve alarm kuralları (Alertmanager), uygulama düzeyinde güvenlik duvarı, panelde sistem kaynakları.
+**Management** ([`docs/06-api.md`](docs/06-api.md), [`docs/07-panel.md`](docs/07-panel.md))
+- REST API; its description is generated by the running server (`GET /v1/openapi.json`, OpenAPI 3.0).
+- Admin panel in English and Turkish (React + TypeScript + Vite).
+- API keys and panel users, two roles (admin, read-only), two-step sign-in (TOTP), an audit log of every change.
 
-**Yönetim** ([`docs/06-api.md`](docs/06-api.md), [`docs/07-panel.md`](docs/07-panel.md))
-- REST API; tanımı çalışan sunucudan üretilir (`GET /v1/openapi.json`, OpenAPI 3.0).
-- Türkçe yönetim paneli (React + TypeScript + Vite).
-- API anahtarları ve panel kullanıcıları, iki rol (yönetici, salt okunur), iki adımlı doğrulama (TOTP), her değişikliğin denetim kaydı.
+## Screenshots
 
-## Mimari
+Taken in the lab with fictional demo data and real calls generated by SIPp.
+
+<table>
+<tr>
+<td width="50%"><a href="docs/images/en/call-trace.png"><img src="docs/images/en/call-trace.png" alt="Call trace"></a><br><b>Call trace</b>: every SIP message of one call; the first vendor answers 503 and the call fails over to the next one. Downloadable as pcap.</td>
+<td width="50%"><a href="docs/images/en/overview.png"><img src="docs/images/en/overview.png" alt="Overview"></a><br><b>Overview</b>: calls, ASR, ACD, revenue, cost and margin, with a daily chart and breakdowns by client, vendor and prefix.</td>
+</tr>
+<tr>
+<td width="50%"><a href="docs/images/en/routing-plan.png"><img src="docs/images/en/routing-plan.png" alt="Routing plan"></a><br><b>Routing plan</b>: vendor connections per prefix; LCR or priority, weights, day and time windows, loss protection.</td>
+<td width="50%"><a href="docs/images/en/live-monitor.png"><img src="docs/images/en/live-monitor.png" alt="Live monitor"></a><br><b>Live monitor</b>: counters for the last 60 seconds, refreshed every second; breakdown by country, prefix and vendor.</td>
+</tr>
+</table>
+
+## Architecture
 
 ```mermaid
 flowchart LR
-  callers["Müşteri trunk'ları"] -- SIP --> sip["SIP çekirdeği<br/>(OpenSIPS)"]
-  sip -- SIP --> vendors["Sağlayıcılar"]
-  sip -- "ng" --> rtp["rtpengine<br/>(ses)"]
+  callers["Client trunks"] -- SIP --> sip["SIP core<br/>(OpenSIPS)"]
+  sip -- SIP --> vendors["Vendors"]
+  sip -- "ng" --> rtp["rtpengine<br/>(media)"]
   sip -- "HTTP+JSON, v1" --> engine["route-engine"]
-  engine -- "MI: çağrıyı bitir" --> sip
-  engine -- "tek Lua betiği" --> redis[("Redis<br/>limitler, rezervasyon,<br/>çağrı durumu")]
-  engine -- "CDR olayları" --> nats[["NATS JetStream"]]
+  engine -- "MI: end call" --> sip
+  engine -- "one Lua script" --> redis[("Redis<br/>limits, reservations,<br/>call state")]
+  engine -- "CDR events" --> nats[["NATS JetStream"]]
   nats --> rater["rater"]
-  rater --> pg[("PostgreSQL<br/>yapılandırma, bakiye, CDR")]
-  rater --> ch[("ClickHouse<br/>CDR kopyası, çağrı izi")]
-  pg -- "görüntü (LISTEN/NOTIFY)" --> engine
+  rater --> pg[("PostgreSQL<br/>configuration, balances, CDRs")]
+  rater --> ch[("ClickHouse<br/>CDR copy, call trace")]
+  pg -- "snapshot (LISTEN/NOTIFY)" --> engine
   sip -- HEP --> tc["trace-collector"]
   tc --> ch
   panel["panel (React)"] --> api["api (REST)"]
   api --> pg
   api --> ch
-  api -- "canlı çağrılar" --> engine
+  api -- "live calls" --> engine
 ```
 
-- **OpenSIPS** yalnızca SIP taşır; betiği ince tutulur ve karar içermez. Her çağrıyı sürümlü, SIP sunucusundan bağımsız bir HTTP arayüzüyle `route-engine`'e sorar ([ADR-0002](docs/decisions/0002-is-mantigi-motorda-surumlu-arayuz.md)). **rtpengine** sesi aktarır; ses her çağrıda ondan geçer.
-- **route-engine** kararı bellekteki değişmez bir yapılandırma görüntüsünden verir: çağrı yolunda SQL sorgusu yoktur, çağrı başına yalnızca bir Redis betiği çalışır ([ADR-0003](docs/decisions/0003-cagri-yolunda-sql-yok.md)). Görüntü, API her yazdığında `NOTIFY` ile hemen yenilenir.
-- **rater** çağrı kayıtlarını NATS JetStream'den alır, ücretlendirir, bakiyeden düşer, PostgreSQL'e yazar ve ClickHouse'a kopyalar; tekrar gelen kaydı bir kez işler.
-- **api** yönetim API'sini ve paneli sunar; raporları ClickHouse'tan (yoksa PostgreSQL'den) okur.
-- Ayrıntı: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) (bileşenler, arayüzler, çağrı akışları, eşzamanlılık, hata ve zaman aşımı stratejisi), karar kayıtları [`docs/decisions/`](docs/decisions/README.md).
+- **OpenSIPS** only carries SIP; its script is kept thin and makes no decisions. It asks `route-engine` about every call through a versioned HTTP interface that is independent of the SIP server ([ADR-0002](docs/decisions/0002-is-mantigi-motorda-surumlu-arayuz.md)). **rtpengine** relays the media of every call.
+- **route-engine** decides from an immutable in-memory snapshot of the configuration: there is no SQL on the call path, and each call runs a single Redis script ([ADR-0003](docs/decisions/0003-cagri-yolunda-sql-yok.md)). The snapshot is refreshed immediately through `NOTIFY` whenever the API writes.
+- **rater** takes call records from NATS JetStream, rates them, charges balances, writes them to PostgreSQL and copies them to ClickHouse; a record delivered twice is processed once.
+- **api** serves the management API and the panel; reports are read from ClickHouse (PostgreSQL when it isn't configured).
+- More: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) (components, interfaces, call flows, concurrency, error and timeout strategy) and the decision records in [`docs/decisions/`](docs/decisions/README.md).
 
-## Kapasite: hedef ve ölçülen
+## Capacity: target and measured
 
-| | Değer |
+| | |
 |---|---|
-| Hedef | 20.000 eşzamanlı çağrı, 1.000 CPS sürekli; çağrı kararı p99 < 10 ms. Bu bir **hedeftir**; tek sunucuyu aşan kısmı kümelemeyle (Enterprise) ve gerçek sunucuda doğrulanacaktır. Kapasite planı: [`docs/02-mimari.md`](docs/02-mimari.md) |
-| Ölçülen (geliştirici makinesi, macOS + Docker) | `make load CPS=200 CC=2000 DURATION=30`: 6.000 çağrı, 0 hata; çağrı kararı p50 0,2–0,3 ms, p99 makinenin yüküne göre 0,6–4,6 ms (son çalıştırmalar). Bellekteki karar ~1,5 µs (`go test -bench Authorize ./pkg/routing`). 5 milyon fiyatlı tarifede değişiklik yokken görüntü yenilemesi ~10 ms |
-| Ölçümün sınırları | Varsayılan yük testi ses paketi akıtmaz (sinyalleşme ve aktarıcı oturumu; `TRANSCODE=1` kipinde ses akar). Makinede başka iş yükü varken karar süresi p99 bütçeyi aşabiliyor. Linux sunucuda ve çekirdek içi ses aktarımıyla ölçüm yapılmadı |
+| Target | 20,000 concurrent calls, 1,000 CPS sustained; call decision p99 < 10 ms. This is a **target**; the part beyond one server will come from clustering (Enterprise) and be verified on real servers. Capacity plan: [`docs/02-mimari.md`](docs/02-mimari.md) |
+| Measured (developer machine, macOS + Docker) | `make load CPS=200 CC=2000 DURATION=30`: 6,000 calls, 0 failures; call decision p50 0.2–0.3 ms, p99 0.6–4.6 ms depending on machine load (recent runs). In-memory decision ~1.5 µs (`go test -bench Authorize ./pkg/routing`). Snapshot refresh of a 5-million-rate tariff with nothing changed ~10 ms |
+| Limits of the measurement | The default load test sends no audio (signalling and relay sessions; `TRANSCODE=1` mode does stream audio). With other work on the machine, decision p99 can exceed the budget. Nothing has been measured on a Linux server or with kernel-mode media forwarding yet |
 
-## Hızlı başlangıç (laboratuvar)
+## Quick start (lab)
 
-Gerekenler: Docker (Compose ile), Go (`go.mod` içindeki sürüm), Node.js ve npm (panel için), `make`, `openssl`, `curl`, Python 3 (örnek veri ve e-posta testi için). OpenSIPS imajı kaynaktan derlendiği için ilk kurulum birkaç dakika sürer.
+Requirements: Docker with Compose, Go (the version in `go.mod`), Node.js and npm (for the panel), `make`, `openssl`, `curl`, Python 3 (demo data and the e-mail test). The OpenSIPS image is built from source, so the first start takes a few minutes.
 
 ```sh
 make lab-up          # OpenSIPS, rtpengine, PostgreSQL, Redis, ClickHouse, NATS, SIPp, route-engine, rater, trace-collector
-make test-call       # laboratuvar verisini yükler (make lab-seed) ve tek bir çağrı yapar
-make load CPS=50 CC=1000   # yük testi; rapor ve PASS/FAIL
+make test-call       # loads the lab data (make lab-seed) and places one call
+make load CPS=50 CC=1000   # load test; report and PASS/FAIL
 make lab-down
 ```
 
-Yönetim API'si ve panel:
+Management API and panel:
 
 ```sh
-set -a; . test/seed/dev.env; set +a  # laboratuvar API anahtarı ve panel kullanıcısı
-make api-run                         # API: 127.0.0.1:58080 (ayrı bir uçbirimde açık kalır)
-make seed-user                       # laboratuvar panel kullanıcısı
-make seed                            # panel için örnek veri
-make panel-install && make panel-dev # panel: 127.0.0.1:58081
+set -a; . test/seed/dev.env; set +a  # lab API key and panel user
+make api-run                         # API on 127.0.0.1:58080 (keep it running in a separate terminal)
+make seed-user                       # lab panel user
+make seed                            # demo data for the panel
+make panel-install && make panel-dev # panel on 127.0.0.1:58081 (add ?lang=en or use the TR/EN switch)
 ```
 
-Laboratuvar portları başka projelerle çakışmasın diye 56xxx/58xxx aralığındadır (PostgreSQL 56432, Redis 56379, ClickHouse 58123, posta yakalayıcı 58025, route-engine 58090). `deploy/compose/lab.env` ve `test/seed/dev.env` içindeki değerler **yalnızca laboratuvar içindir**; hiçbir kurulumda kullanmayın. Üretim kurulumu kendi sırlarını kendisi üretir.
+Lab ports are in the 56xxx/58xxx range so they don't clash with other projects (PostgreSQL 56432, Redis 56379, ClickHouse 58123, mail catcher 58025, route-engine 58090). The values in `deploy/compose/lab.env` and `test/seed/dev.env` are **for the lab only**; never use them in an installation. A production install generates its own secrets.
 
-## Üretim kurulumu
+## Production install
 
-Tek bir Linux sunucuya Docker Compose ile kurulur (`deploy/prod/`): `install.sh` sırları üretir, imajları sunucuda derler ve servisleri başlatır; `upgrade.sh`, `backup.sh` ve `restore.sh` yükseltme, yedekleme ve geri yükleme içindir. İsteğe bağlı olarak panel Caddy ile HTTPS üzerinden sunulur, SIP sertifikası kendiliğinden alınır, izleme (Prometheus, Alertmanager) eklenir. Adımlar, ayarlar, ağ katmanı koruması (örnek nftables kuralları) ve bilinen sınırlar: [`docs/09-kurulum.md`](docs/09-kurulum.md). Yukarıdaki "Durum" bölümündeki uyarı geçerlidir.
+Installs on a single Linux server with Docker Compose (`deploy/prod/`): `install.sh` generates the secrets, builds the images on the server and starts the services; `upgrade.sh`, `backup.sh` and `restore.sh` handle upgrades, backups and restores. Optionally the panel is served over HTTPS by Caddy, the SIP certificate is obtained automatically and monitoring (Prometheus, Alertmanager) is added. Steps, settings, network-level protection (sample nftables rules) and known limits: [`docs/09-kurulum.md`](docs/09-kurulum.md). The note under "Status" above applies.
 
-## Testler
+## Tests
 
-| Komut | Kapsam |
+| Command | Covers |
 |---|---|
-| `make test` | Birim testleri; laboratuvar gerekmez |
-| `make test-engine` | route-engine, laboratuvar Redis'iyle |
-| `make test-api` | API uçtan uca, laboratuvar PostgreSQL'inde ayrı bir veritabanıyla |
-| `make test-openapi` | API tanımının Redocly denetimi |
-| `make test-routing` | Gerçek çağrılarla SIPp senaryoları: yedek rotaya geçiş, ret, limitler, rezervasyon, CANCEL, re-INVITE, TLS/SRTP, NAT, IPv6, kodek çevirisi, çağrı izi… |
-| `make test-journal` | NATS kesikken motor ölünce çağrı kaydının kaybolmaması |
-| `make test-reports`, `make test-archive`, `make test-mail` | ClickHouse ve PostgreSQL raporlarının eşitliği, arşivleme, e-posta |
-| `make load CPS=<n> CC=<n>` | Yük testi; karar süresi p99 bütçesi dahil PASS/FAIL |
-| `make prod-smoke` | Tek sunucu kurulumu uçtan uca: kurulum, çağrı, çökme, yedek ve geri yükleme, yükseltme |
+| `make test` | Unit tests; no lab needed |
+| `make test-engine` | route-engine against the lab Redis |
+| `make test-api` | API end to end, on a separate database in the lab PostgreSQL |
+| `make test-openapi` | Redocly lint of the API description |
+| `make test-routing` | SIPp scenarios with real calls: failover, rejection, limits, reservation, CANCEL, re-INVITE, TLS/SRTP, NAT, IPv6, transcoding, call trace… |
+| `make test-journal` | No call record is lost when the engine dies while NATS is down |
+| `make test-reports`, `make test-archive`, `make test-mail` | ClickHouse and PostgreSQL reports agree, archiving, e-mail |
+| `make load CPS=<n> CC=<n>` | Load test; PASS/FAIL including the decision-time p99 budget |
+| `make prod-smoke` | Single-server install end to end: install, a call, a crash, backup and restore, upgrade |
 
-Komutların tam listesi ve katkı kuralları: [`CONTRIBUTING.md`](CONTRIBUTING.md), [`Makefile`](Makefile).
+Full command list and contribution rules: [`CONTRIBUTING.md`](CONTRIBUTING.md), [`Makefile`](Makefile).
 
-## Dizin yapısı
+## Repository layout
 
 ```
-cmd/             Go giriş noktaları: api, route-engine, rater, trace-collector
-pkg/             Go paketleri (Enterprise sürümü içe aktardığı için internal/ değil)
-sip/opensips/    OpenSIPS yapılandırması (şablon)
-media/rtpengine/ rtpengine yapılandırması (şablon)
-db/migrations/   PostgreSQL ve ClickHouse şeması
-web/             Yönetim paneli (React + TypeScript + Vite)
-deploy/          Laboratuvar (compose), imajlar, tek sunucu kurulumu (prod)
-test/            SIPp senaryoları, yük testi, örnek veri
-docs/            Belgeler (Türkçe)
+cmd/             Go entry points: api, route-engine, rater, trace-collector
+pkg/             Go packages (not internal/, because the Enterprise edition imports them)
+sip/opensips/    OpenSIPS configuration (template)
+media/rtpengine/ rtpengine configuration (template)
+db/migrations/   PostgreSQL and ClickHouse schema
+web/             Admin panel (React + TypeScript + Vite)
+deploy/          Lab (compose), images, single-server install (prod)
+test/            SIPp scenarios, load test, demo data
+docs/            Documentation (Turkish)
 ```
 
-## Belgeler
+## Documentation (Turkish)
 
-| Belge | Konu |
+| Document | Topic |
 |---|---|
-| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Bileşenler, arayüzler, çağrı akışları, eşzamanlılık, hata stratejisi, açık sorular |
-| [`docs/decisions/`](docs/decisions/README.md) | Mimari karar kayıtları (ADR) |
-| [`docs/02-mimari.md`](docs/02-mimari.md) | Kapasite planı |
-| [`docs/03-yol-haritasi.md`](docs/03-yol-haritasi.md) | Yol haritası ve yapılanlar |
-| [`docs/04-acik-cekirdek-modeli.md`](docs/04-acik-cekirdek-modeli.md) | Community ve Enterprise ayrımı |
-| [`docs/05-ozellik-katalogu.md`](docs/05-ozellik-katalogu.md) | Özellik kataloğu ve durumu |
-| [`docs/06-api.md`](docs/06-api.md) | Yönetim API'si |
-| [`docs/07-panel.md`](docs/07-panel.md) | Yönetim paneli |
-| [`docs/08-cagri-arayuzu.md`](docs/08-cagri-arayuzu.md) | SIP çekirdeği ile motor arasındaki arayüz |
-| [`docs/09-kurulum.md`](docs/09-kurulum.md) | Tek sunucu kurulumu, yükseltme, yedekleme |
-| [`docs/10-izleme.md`](docs/10-izleme.md) | Ölçüler, alarmlar, çağrı izi |
-| [`docs/TASKS.md`](docs/TASKS.md) | Kalan işler |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Components, interfaces, call flows, concurrency, error strategy, open questions |
+| [`docs/decisions/`](docs/decisions/README.md) | Architecture decision records (ADR) |
+| [`docs/02-mimari.md`](docs/02-mimari.md) | Capacity plan |
+| [`docs/03-yol-haritasi.md`](docs/03-yol-haritasi.md) | Roadmap and what has been done |
+| [`docs/04-acik-cekirdek-modeli.md`](docs/04-acik-cekirdek-modeli.md) | Community and Enterprise |
+| [`docs/05-ozellik-katalogu.md`](docs/05-ozellik-katalogu.md) | Feature catalogue and status |
+| [`docs/06-api.md`](docs/06-api.md) | Management API |
+| [`docs/07-panel.md`](docs/07-panel.md) | Admin panel |
+| [`docs/08-cagri-arayuzu.md`](docs/08-cagri-arayuzu.md) | Interface between the SIP core and the engine |
+| [`docs/09-kurulum.md`](docs/09-kurulum.md) | Single-server install, upgrades, backups |
+| [`docs/10-izleme.md`](docs/10-izleme.md) | Metrics, alerts, call trace |
+| [`docs/TASKS.md`](docs/TASKS.md) | Open work |
 
-## Community ve Enterprise
+## Community and Enterprise
 
-Ürün açık çekirdek (open-core) modeliyle geliştirilir; ayrım sayıyla değil yetenekle yapılır ([`docs/04-acik-cekirdek-modeli.md`](docs/04-acik-cekirdek-modeli.md)).
+The product follows an open-core model; the editions differ by capability, not by limits on numbers ([`docs/04-acik-cekirdek-modeli.md`](docs/04-acik-cekirdek-modeli.md)).
 
-- **Community** (bu depo): tek düğümlü ve tek hesaplıdır; yönlendirme, ücretlendirme, limitler, CDR, raporlar, çağrı izi, izleme, API, panel ve tek sunucu kurulumu dahildir.
-- **Enterprise:** ayrı, ticari lisanslı bir sürümdür; çoklu düğüm ve yüksek erişilebilirlik, bayi hiyerarşisi, faturalama, DID, kalite tabanlı yönlendirme ve dolandırıcılık tespiti gibi yetenekler ekler. Bu depoyu bir Go modülü olarak kullanır ve buradaki genişleme noktalarına bağlanır; bu depo Enterprise'dan hiçbir kod içermez ve onu içe aktarmaz.
+- **Community** (this repository): single node, single account; includes routing, rating, limits, CDRs, reports, call trace, monitoring, the API, the panel and the single-server install.
+- **Enterprise:** a separate, commercially licensed edition that adds capabilities such as multiple nodes and high availability, reseller hierarchy, invoicing, DIDs, quality-based routing and fraud detection. It uses this repository as a Go module and plugs into its extension points; this repository contains no Enterprise code and never imports it.
 
-## Lisans ve katkı
+## Licence and contributing
 
-[GNU Affero General Public License v3.0](LICENSE) (`AGPL-3.0-only`); telif bildirimi [`NOTICE`](NOTICE) içindedir. Her kaynak dosyası `SPDX-License-Identifier: AGPL-3.0-only` başlığı taşır.
+[GNU Affero General Public License v3.0](LICENSE) (`AGPL-3.0-only`); the copyright notice is in [`NOTICE`](NOTICE). Every source file carries an `SPDX-License-Identifier: AGPL-3.0-only` header.
 
-OpenSIPS (GPLv2) ve rtpengine (GPLv3) ayrı süreçlerdir; bu depodaki kod onlarla yalnızca ağ üzerinden konuşur, kodlarını içermez ve onlara bağlanmaz ([ADR-0009](docs/decisions/0009-gpl-bilesenlerle-yalnizca-ag.md)).
+OpenSIPS (GPLv2) and rtpengine (GPLv3) are separate processes; the code here talks to them over the network only, contains none of their code and does not link to them ([ADR-0009](docs/decisions/0009-gpl-bilesenlerle-yalnizca-ag.md)).
 
-Katkılar memnuniyetle karşılanır; ancak aynı kod Enterprise sürümünün de temeli olduğu için birleştirilmeden önce **katkı sözleşmesi (CLA)** imzalanmış olmalıdır. CLA metni ayrıca yayımlanacaktır; o zamana kadar çekme istekleri tartışılabilir ama birleştirilemez. Ayrıntı: [`CONTRIBUTING.md`](CONTRIBUTING.md).
+Contributions are welcome, but because the same code is also the basis of the Enterprise edition, a **contributor licence agreement (CLA)** must be signed before anything is merged. The CLA text will be published separately; until then pull requests can be discussed but not merged. Details: [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
-## Güvenlik
+## Security
 
-Güvenlik açıklarını herkese açık hata kaydı olarak değil, [`SECURITY.md`](SECURITY.md) içindeki yolla özel olarak bildirin. SIP çekirdeğinin yönetim soketi, Redis ve NATS gibi bileşenler kimlik doğrulamasızdır ve özel ağ varsayımına dayanır; ayrıntı [`docs/09-kurulum.md`](docs/09-kurulum.md).
+Please report vulnerabilities privately, not as public issues, as described in [`SECURITY.md`](SECURITY.md). Components such as the SIP core's management socket, Redis and NATS have no authentication and rely on a private network; see [`docs/09-kurulum.md`](docs/09-kurulum.md).

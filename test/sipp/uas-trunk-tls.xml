@@ -1,0 +1,145 @@
+<?xml version="1.0" encoding="ISO-8859-1" ?>
+<!-- SPDX-License-Identifier: AGPL-3.0-only -->
+<!DOCTYPE scenario SYSTEM "sipp.dtd">
+<!-- A client's PBX that registers over TLS and then gets a call on the very
+     connection its REGISTER went out on, all in one SIPp process (SIPp
+     cannot hand a connection to another process). SIPp files a request
+     under the call its Call-ID belongs to, so the caller (natlab.sh,
+     tls_trunk) uses this scenario's Call-ID for its INVITE: the INVITE then
+     lands in this scenario after the registration. The PBX names a private
+     address for itself (10.0.0.5:5061), so the call cannot reach it but
+     through the connection. The call must be addressed to the contact it
+     registered, name the media relay and offer encrypted audio with a key
+     (RTP/SAVP, a=crypto); anything else is refused with 488 (a failed check
+     alone would not stop SIPp from answering). The answer carries a key of
+     its own. The caller ends the call. Credentials as in uac-register.xml
+     (-s, -au, -ap). -->
+<scenario name="uas-trunk-tls">
+  <send retrans="500">
+    <![CDATA[
+      REGISTER sip:[remote_ip]:[remote_port] SIP/2.0
+      Via: SIP/2.0/[transport] 10.0.0.5:5061;branch=[branch]
+      From: <sip:[service]@[remote_ip]>;tag=[pid]SIPpTag00[call_number]
+      To: <sip:[service]@[remote_ip]>
+      Call-ID: [call_id]
+      CSeq: 1 REGISTER
+      Contact: <sip:[service]@10.0.0.5:5061;transport=tls>
+      Expires: 600
+      Max-Forwards: 70
+      User-Agent: sipp-lab-pbx
+      Content-Length: 0
+    ]]>
+  </send>
+  <recv response="100" optional="true" />
+  <recv response="401" auth="true" />
+  <send retrans="500">
+    <![CDATA[
+      REGISTER sip:[remote_ip]:[remote_port] SIP/2.0
+      Via: SIP/2.0/[transport] 10.0.0.5:5061;branch=[branch]
+      From: <sip:[service]@[remote_ip]>;tag=[pid]SIPpTag00[call_number]
+      To: <sip:[service]@[remote_ip]>
+      Call-ID: [call_id]
+      CSeq: 2 REGISTER
+      Contact: <sip:[service]@10.0.0.5:5061;transport=tls>
+      Expires: 600
+      [authentication]
+      Max-Forwards: 70
+      User-Agent: sipp-lab-pbx
+      Content-Length: 0
+    ]]>
+  </send>
+  <recv response="100" optional="true" />
+  <recv response="200" />
+
+  <recv request="INVITE" crlf="true" timeout="15000" ontimeout="unreached">
+    <action>
+      <ereg regexp="INVITE sip:[^@ ]+@10\.0\.0\.5:5061;transport=tls " search_in="msg" assign_to="addressed" />
+      <ereg regexp="c=IN IP4 172\.30\.0\.11" search_in="body" assign_to="relayed" />
+      <ereg regexp="m=audio [0-9]+ RTP/SAVP " search_in="body" assign_to="encrypted" />
+      <ereg regexp="a=crypto:" search_in="body" assign_to="keyed" />
+    </action>
+  </recv>
+  <nop test="addressed" next="check-media" />
+  <nop next="refuse" />
+  <label id="check-media" />
+  <nop test="relayed" next="check-kind" />
+  <nop next="refuse" />
+  <label id="check-kind" />
+  <nop test="encrypted" next="check-key" />
+  <nop next="refuse" />
+  <label id="check-key" />
+  <nop test="keyed" next="accept" />
+
+  <label id="refuse" />
+  <send>
+    <![CDATA[
+      SIP/2.0 488 Not Acceptable Here
+      [last_Via:]
+      [last_From:]
+      [last_To:];tag=[pid]SIPpTag01[call_number]
+      [last_Call-ID:]
+      [last_CSeq:]
+      Content-Length: 0
+    ]]>
+  </send>
+  <recv request="ACK" />
+  <nop><action><error message="the call did not arrive as an encrypted call to the registered contact through the relay" /></action></nop>
+
+  <label id="accept" />
+  <send>
+    <![CDATA[
+      SIP/2.0 180 Ringing
+      [last_Via:]
+      [last_From:]
+      [last_To:];tag=[pid]SIPpTag01[call_number]
+      [last_Call-ID:]
+      [last_CSeq:]
+      Contact: <sip:[service]@10.0.0.5:5061;transport=tls>
+      Content-Length: 0
+    ]]>
+  </send>
+  <send retrans="500">
+    <![CDATA[
+      SIP/2.0 200 OK
+      [last_Via:]
+      [last_From:]
+      [last_To:];tag=[pid]SIPpTag01[call_number]
+      [last_Call-ID:]
+      [last_CSeq:]
+      Contact: <sip:[service]@10.0.0.5:5061;transport=tls>
+      Content-Type: application/sdp
+      Content-Length: [len]
+
+      v=0
+      o=user1 53655765 2353687637 IN IP4 10.0.0.5
+      s=-
+      c=IN IP4 10.0.0.5
+      t=0 0
+      m=audio [media_port] RTP/SAVP 8
+      a=rtpmap:8 PCMA/8000
+      a=crypto:1 AES_CM_128_HMAC_SHA1_80 inline:d0RmdmcmVCspeEc3QGZiNWpVLFJhQX1cfHAwJSoj
+    ]]>
+  </send>
+  <recv request="ACK" rtd="true" crlf="true" />
+
+  <recv request="BYE" timeout="20000" ontimeout="late" />
+  <send next="done">
+    <![CDATA[
+      SIP/2.0 200 OK
+      [last_Via:]
+      [last_From:]
+      [last_To:]
+      [last_Call-ID:]
+      [last_CSeq:]
+      Content-Length: 0
+    ]]>
+  </send>
+
+  <label id="late" />
+  <nop><action><error message="no BYE reached the PBX on its connection" /></action></nop>
+  <label id="unreached" />
+  <nop><action><error message="no call reached the PBX on the connection it registered over" /></action></nop>
+
+  <label id="done" />
+  <Reference variables="addressed,relayed,encrypted,keyed" />
+</scenario>

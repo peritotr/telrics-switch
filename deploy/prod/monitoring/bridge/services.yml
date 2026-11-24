@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+- { targets: ["172.30.8.40:58090"], labels: { service: route-engine } }
+- { targets: ["api:58091"],         labels: { service: api } }
+- { targets: ["rater:58092"],       labels: { service: rater } }
+- { targets: ["172.30.8.36:58093"], labels: { service: trace-collector } }
+- { targets: ["172.30.8.10:8888"],  labels: { service: opensips } }
+- { targets: ["172.30.8.11:2225"],  labels: { service: rtpengine } }

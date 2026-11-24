@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="ISO-8859-1" ?>
+<!-- SPDX-License-Identifier: AGPL-3.0-only -->
+<!DOCTYPE scenario SYSTEM "sipp.dtd">
+<!-- A caller that never acknowledges the answer (200), like a device whose
+     CANCEL lost the race with the 200 and that thinks the call is over.
+     The switch must end the call itself, 32 seconds after the answer
+     (64 x T1, ADR-0026): this caller has to get a BYE, and answers it.
+     The vendor's retransmitted 200s are taken in silence meanwhile. -->
+<scenario name="uac-noack">
+  <send retrans="500">
+    <![CDATA[
+      INVITE sip:[service]@[remote_ip]:[remote_port] SIP/2.0
+      Via: SIP/2.0/[transport] [local_ip]:[local_port];branch=z9hG4bK-[pid]-[call_number]-inv
+      From: sipp <sip:sipp@[local_ip]:[local_port]>;tag=[pid]SIPpTag00[call_number]
+      To: [service] <sip:[service]@[remote_ip]:[remote_port]>
+      Call-ID: [call_id]
+      CSeq: 1 INVITE
+      Contact: <sip:sipp@[local_ip]:[local_port]>
+      Max-Forwards: 70
+      Content-Type: application/sdp
+      Content-Length: [len]
+
+      v=0
+      o=user1 53655765 2353687637 IN IP[local_ip_type] [local_ip]
+      s=-
+      c=IN IP[media_ip_type] [media_ip]
+      t=0 0
+      m=audio [media_port] RTP/AVP 8
+      a=rtpmap:8 PCMA/8000
+    ]]>
+  </send>
+
+  <recv response="100" optional="true" />
+  <recv response="180" optional="true" />
+  <recv response="183" optional="true" />
+  <recv response="200" start_rtd="answer" />
+
+  <!-- No ACK. Retransmissions of the 200 loop here; the BYE ends the wait. -->
+  <label id="wait" />
+  <recv response="200" optional="true" next="wait" />
+  <recv request="BYE" timeout="45000" rtd="answer" />
+
+  <send>
+    <![CDATA[
+      SIP/2.0 200 OK
+      [last_Via:]
+      [last_From:]
+      [last_To:]
+      [last_Call-ID:]
+      [last_CSeq:]
+      Contact: <sip:sipp@[local_ip]:[local_port]>
+      Content-Length: 0
+    ]]>
+  </send>
+
+  <timewait milliseconds="2000" />
+</scenario>

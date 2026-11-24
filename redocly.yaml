@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Redocly's rules for `make test-openapi`: the recommended set with every
+# rule an error, so that a warning fails the check as well. No rule is
+# turned off.
+extends:
+  - recommended-strict

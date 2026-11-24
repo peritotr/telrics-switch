@@ -1,0 +1,270 @@
+<?xml version="1.0" encoding="ISO-8859-1" ?>
+<!-- SPDX-License-Identifier: AGPL-3.0-only -->
+<!DOCTYPE scenario SYSTEM "sipp.dtd">
+<!-- A vendor for the scenarios about early media, PRACK and transfers
+     (ADR-0028; the caller is uac-early.xml). The offer must arrive through
+     the media relay. Then one plan:
+       __PLAN__  "reliable": the caller says it supports reliable provisional
+                 responses (Supported: 100rel). This vendor sends 183 with
+                 early media (SDP of its own address), Require: 100rel and
+                 RSeq: 1 (RFC 3262), and waits for the caller's PRACK with
+                 RAck "1 1 INVITE"; answers it, answers the call, and after
+                 1.5 s asks for a transfer (REFER) itself: the switch must
+                 refuse it with 403 (CSeq checked). The caller's own REFER
+                 must never arrive here: SIPp fails a call on an unexpected
+                 request. Waits for the BYE.
+                 "early": 183 with early media and no 100rel, answered
+                 after 300 ms; waits for the BYE.
+                 "late": the same 183, but the answer comes __WAIT__ ms
+                 later, with no media in between; waits for the BYE. A
+                 CANCEL meanwhile is answered with 487, and this scenario
+                 fails.
+     A request that is not as expected is refused with 488 and this
+     scenario fails: a failed check alone would not stop SIPp. The answer to
+     the INVITE is sent after other transactions, so its Via is kept from
+     the INVITE rather than taken from the last message. -->
+<scenario name="uas-early">
+  <recv request="INVITE" crlf="true" rrs="true">
+    <action>
+      <ereg regexp="c=IN IP4 172\.30\.0\.11" search_in="body" assign_to="relayed" />
+      <ereg regexp="100rel" search_in="hdr" header="Supported:" assign_to="supported" />
+      <ereg regexp=".*" search_in="hdr" header="Via:" assign_to="via" />
+      <ereg regexp=".*" search_in="hdr" header="From:" assign_to="from" />
+      <ereg regexp=".*" search_in="hdr" header="To:" assign_to="to" />
+    </action>
+  </recv>
+  <nop test="relayed" next="offered" />
+  <nop next="refuse" />
+  <label id="offered" />
+  <nop next="__PLAN__" />
+
+  <!-- reliable -->
+  <label id="reliable" />
+  <nop test="supported" next="r1" />
+  <nop next="refuse" />
+  <label id="r1" />
+  <send>
+    <![CDATA[
+      SIP/2.0 183 Session Progress
+      [last_Via:]
+      [last_From:]
+      [last_To:];tag=[pid]SIPpTag01[call_number]
+      [last_Call-ID:]
+      [last_CSeq:]
+      Contact: <sip:[local_ip]:[local_port];transport=[transport]>
+      Require: 100rel
+      RSeq: 1
+      Content-Type: application/sdp
+      Content-Length: [len]
+
+      v=0
+      o=vendor 4242 1 IN IP[local_ip_type] [local_ip]
+      s=-
+      c=IN IP[media_ip_type] [media_ip]
+      t=0 0
+      m=audio [media_port] RTP/AVP 8
+      a=rtpmap:8 PCMA/8000
+    ]]>
+  </send>
+  <recv request="PRACK" timeout="5000" ontimeout="bad">
+    <action>
+      <ereg regexp="^ *1 +1 +INVITE" search_in="hdr" header="RAck:" assign_to="rack" />
+    </action>
+  </recv>
+  <nop test="rack" next="r2" />
+  <nop next="refuse_prack" />
+  <label id="r2" />
+  <send>
+    <![CDATA[
+      SIP/2.0 200 OK
+      [last_Via:]
+      [last_From:]
+      [last_To:]
+      [last_Call-ID:]
+      [last_CSeq:]
+      Content-Length: 0
+    ]]>
+  </send>
+  <pause milliseconds="300" />
+  <send retrans="500">
+    <![CDATA[
+      SIP/2.0 200 OK
+      Via:[$via]
+      From:[$from]
+      To:[$to];tag=[pid]SIPpTag01[call_number]
+      Call-ID: [call_id]
+      CSeq: 1 INVITE
+      Contact: <sip:[local_ip]:[local_port];transport=[transport]>
+      Content-Type: application/sdp
+      Content-Length: [len]
+
+      v=0
+      o=vendor 4242 1 IN IP[local_ip_type] [local_ip]
+      s=-
+      c=IN IP[media_ip_type] [media_ip]
+      t=0 0
+      m=audio [media_port] RTP/AVP 8
+      a=rtpmap:8 PCMA/8000
+    ]]>
+  </send>
+  <recv request="ACK" />
+  <!-- A transfer asked for by this side. -->
+  <pause milliseconds="1500" />
+  <send retrans="500">
+    <![CDATA[
+      REFER [next_url] SIP/2.0
+      Via: SIP/2.0/[transport] [local_ip]:[local_port];branch=z9hG4bK-[pid]-[call_number]-vref
+      From:[$to];tag=[pid]SIPpTag01[call_number]
+      To:[$from]
+      Call-ID: [call_id]
+      CSeq: 1 REFER
+      Contact: <sip:[local_ip]:[local_port];transport=[transport]>
+      Max-Forwards: 70
+      Refer-To: <sip:905551112233@172.30.0.20>
+      Referred-By: <sip:vendor@[local_ip]>
+      Content-Length: 0
+    ]]>
+  </send>
+  <recv response="403">
+    <action>
+      <ereg regexp="^ *1 REFER" search_in="hdr" header="CSeq:" assign_to="cseqref" />
+    </action>
+  </recv>
+  <nop test="cseqref" next="wait" />
+  <nop next="bad" />
+
+  <!-- early, late -->
+  <label id="early" />
+  <nop next="progress" />
+  <label id="late" />
+  <label id="progress" />
+  <send>
+    <![CDATA[
+      SIP/2.0 183 Session Progress
+      [last_Via:]
+      [last_From:]
+      [last_To:];tag=[pid]SIPpTag01[call_number]
+      [last_Call-ID:]
+      [last_CSeq:]
+      Contact: <sip:[local_ip]:[local_port];transport=[transport]>
+      Content-Type: application/sdp
+      Content-Length: [len]
+
+      v=0
+      o=vendor 4242 1 IN IP[local_ip_type] [local_ip]
+      s=-
+      c=IN IP[media_ip_type] [media_ip]
+      t=0 0
+      m=audio [media_port] RTP/AVP 8
+      a=rtpmap:8 PCMA/8000
+    ]]>
+  </send>
+  <nop next="__PLAN__-wait" />
+  <label id="reliable-wait" />
+  <label id="early-wait" />
+  <pause milliseconds="__WAIT__" />
+  <nop next="answer" />
+  <!-- late: a CANCEL while ringing is taken as a vendor should (487). -->
+  <label id="late-wait" />
+  <recv request="CANCEL" timeout="__WAIT__" ontimeout="answer" />
+  <send>
+    <![CDATA[
+      SIP/2.0 200 OK
+      [last_Via:]
+      [last_From:]
+      [last_To:]
+      [last_Call-ID:]
+      [last_CSeq:]
+      Content-Length: 0
+    ]]>
+  </send>
+  <send retrans="500">
+    <![CDATA[
+      SIP/2.0 487 Request Terminated
+      Via:[$via]
+      From:[$from]
+      To:[$to];tag=[pid]SIPpTag01[call_number]
+      Call-ID: [call_id]
+      CSeq: 1 INVITE
+      Content-Length: 0
+    ]]>
+  </send>
+  <recv request="ACK" next="cancelled" />
+  <label id="answer" />
+  <send retrans="500">
+    <![CDATA[
+      SIP/2.0 200 OK
+      Via:[$via]
+      From:[$from]
+      To:[$to];tag=[pid]SIPpTag01[call_number]
+      Call-ID: [call_id]
+      CSeq: 1 INVITE
+      Contact: <sip:[local_ip]:[local_port];transport=[transport]>
+      Content-Type: application/sdp
+      Content-Length: [len]
+
+      v=0
+      o=vendor 4242 1 IN IP[local_ip_type] [local_ip]
+      s=-
+      c=IN IP[media_ip_type] [media_ip]
+      t=0 0
+      m=audio [media_port] RTP/AVP 8
+      a=rtpmap:8 PCMA/8000
+    ]]>
+  </send>
+  <recv request="ACK" />
+
+  <!-- The end of every plan: the caller's BYE. -->
+  <label id="wait" />
+  <recv request="BYE" timeout="20000" ontimeout="bad" />
+  <send next="done">
+    <![CDATA[
+      SIP/2.0 200 OK
+      [last_Via:]
+      [last_From:]
+      [last_To:]
+      [last_Call-ID:]
+      [last_CSeq:]
+      Content-Length: 0
+    ]]>
+  </send>
+
+  <!-- A PRACK that is not as expected. -->
+  <label id="refuse_prack" />
+  <send next="bad">
+    <![CDATA[
+      SIP/2.0 481 Call/Transaction Does Not Exist
+      [last_Via:]
+      [last_From:]
+      [last_To:]
+      [last_Call-ID:]
+      [last_CSeq:]
+      Content-Length: 0
+    ]]>
+  </send>
+
+  <!-- An INVITE that is not as expected. -->
+  <label id="refuse" />
+  <send>
+    <![CDATA[
+      SIP/2.0 488 Not Acceptable Here
+      [last_Via:]
+      [last_From:]
+      [last_To:];tag=[pid]SIPpTag01[call_number]
+      [last_Call-ID:]
+      [last_CSeq:]
+      Content-Length: 0
+    ]]>
+  </send>
+  <recv request="ACK" />
+
+  <label id="bad" />
+  <nop><action><error message="early media, PRACK or the refused transfer were not as expected" /></action></nop>
+
+  <!-- late: the switch gave up while this vendor rang. -->
+  <label id="cancelled" />
+  <nop><action><error message="the switch cancelled the call while it rang" /></action></nop>
+
+  <label id="done" />
+  <Reference variables="via,from,to" />
+</scenario>

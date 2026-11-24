@@ -1,0 +1,6 @@
+.git
+docs
+test
+deploy
+**/node_modules
+web/dist

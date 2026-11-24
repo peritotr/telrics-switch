@@ -1,0 +1,274 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+name: softswitch-lab
+
+x-ulimits: &ulimits
+  ulimits:
+    nofile: { soft: 65536, hard: 65536 }
+
+services:
+  opensips:
+    build: { context: ../.., dockerfile: deploy/images/opensips/Dockerfile }
+    <<: *ulimits
+    volumes:
+      - ../../sip/opensips:/etc/opensips:ro
+      - ./certs:/etc/opensips-tls:ro
+    # ENGINE_TOKEN: the lab runs with the engine's interface closed.
+    env_file: [./lab.env]
+    environment:
+      SIP_IP: 172.30.0.10
+      ENGINE_URL: http://172.30.0.40:58090
+      MI_SOCKET: 172.30.0.10:8899
+      RTP_CONTROL: 172.30.0.11:2223
+      # Vendors are checked the way production does by default: against a
+      # directory of trusted authorities (here the lab's own).
+      TLS_CA_DIR: /etc/opensips-tls/roots
+      TLS_CLIENT_CA: /etc/opensips-tls/ca.crt
+      TLS_WATCH_SEC: 3
+      SIP_METRICS: 172.30.0.10:8888
+      TRACE_TARGET: 172.30.0.36:9060
+      HEP_TARGET: 172.30.0.35:9060
+      # IPv6 (T-28): the SIP core listens on the lab's IPv6 network as well.
+      SIP_IP6: fd30::10
+      # Registrations with vendors (ADR-0035): the list is asked for every
+      # two seconds, looked at every ten (the module's least) and a failed
+      # one tried again at the next look, so that the scenarios need not wait.
+      REG_SYNC_SEC: "2"
+      REG_TIMER_SEC: "10"
+      REG_RETRY_SEC: "5"
+    # The registrations' table holds vendors' passwords: kept in memory, as
+    # is the rest of the SIP core's working files.
+    tmpfs: ["/run/opensips:mode=0700"]
+    restart: unless-stopped
+    ports: ["127.0.0.1:58888:8888"]
+    depends_on: [rtpengine, route-engine]
+    networks:
+      lab: { ipv4_address: 172.30.0.10, interface_name: eth0 }
+      lab6: { ipv6_address: "fd30::10", interface_name: eth1 }
+
+  rtpengine:
+    build: { context: ../.., dockerfile: deploy/images/rtpengine/Dockerfile }
+    <<: *ulimits
+    volumes:
+      - ../../media/rtpengine:/etc/rtpengine:ro
+    environment:
+      # Both address families (T-28): the relay bridges a caller on one
+      # and a vendor on the other.
+      RTP_INTERFACE: "172.30.0.11;fd30::11"
+      RTP_CONTROL: 172.30.0.11:2223
+      # A dead call (no media for RTP_TIMEOUT, 60 s) is ended by the SIP
+      # core on the relay's word. The lab keeps the production times: its
+      # other calls without media last up to about 40 seconds.
+      RTP_TEARDOWN_URL: http://172.30.0.10:8888/RPC2
+    ports: ["127.0.0.1:52225:2225"]
+    networks:
+      lab: { ipv4_address: 172.30.0.11, interface_name: eth0 }
+      lab6: { ipv6_address: "fd30::11", interface_name: eth1 }
+
+  # Answering side: stands in for a vendor. Echoes RTP back.
+  sipp-uas:
+    build: ./images/sipp
+    <<: *ulimits
+    tty: true
+    volumes:
+      - ../../test:/work/test:ro
+    command: ["-sf", "/work/test/sipp/uas.xml", "-i", "172.30.0.20", "-p", "5060", "-rtp_echo"]
+    networks: { lab: { ipv4_address: 172.30.0.20 } }
+
+  # The same over IPv6 (T-28), on the lab's IPv6 network only. It answers
+  # OPTIONS too (-aa), for the engine's probe.
+  sipp-uas-v6:
+    build: ./images/sipp
+    <<: *ulimits
+    tty: true
+    volumes:
+      - ../../test:/work/test:ro
+    command: ["-sf", "/work/test/sipp/uas.xml", "-i", "fd30::20", "-p", "5060", "-rtp_echo", "-aa"]
+    networks: { lab6: { ipv6_address: "fd30::20" } }
+
+  # A vendor reached over TLS, with encrypted media (SRTP). SIPp's own TLS
+  # listener takes seconds per handshake and exits on a failed one, so socat
+  # terminates TLS on 5061 and hands the stream to SIPp on TCP 5062.
+  sipp-uas-tls:
+    build: ./images/sipp
+    <<: *ulimits
+    tty: true
+    volumes:
+      - ../../test:/work/test:ro
+      - ./certs:/work/certs:ro
+    entrypoint: ["sh", "-c"]
+    command:
+      - >
+        socat OPENSSL-LISTEN:5061,bind=172.30.0.24,reuseaddr,fork,cert=/work/certs/vendor.crt,key=/work/certs/vendor.key,verify=0
+        TCP:172.30.0.24:5062 &
+        exec sipp -sf /work/test/sipp/uas-srtp.xml -i 172.30.0.24 -p 5062 -t t1
+    networks: { lab: { ipv4_address: 172.30.0.24 } }
+
+  # Two more vendors that refuse every call, for the failover scenario.
+  sipp-reject-1:
+    build: ./images/sipp
+    tty: true
+    volumes:
+      - ../../test:/work/test:ro
+    entrypoint: ["sh", "-c", "sed s/__CODE__/500/ /work/test/sipp/uas-reject.xml > /tmp/reject.xml && exec sipp -sf /tmp/reject.xml -i 172.30.0.22 -p 5060"]
+    networks: { lab: { ipv4_address: 172.30.0.22 } }
+
+  sipp-reject-2:
+    build: ./images/sipp
+    tty: true
+    volumes:
+      - ../../test:/work/test:ro
+    entrypoint: ["sh", "-c", "sed s/__CODE__/503/ /work/test/sipp/uas-reject.xml > /tmp/reject.xml && exec sipp -sf /tmp/reject.xml -i 172.30.0.23 -p 5060"]
+    networks: { lab: { ipv4_address: 172.30.0.23 } }
+
+  # Stores the signalling the SIP core copies to it; the API reads a call's
+  # trace from what it wrote to ClickHouse.
+  trace-collector:
+    build: { context: ../.., dockerfile: deploy/images/go/Dockerfile, args: { CMD: trace-collector } }
+    environment:
+      CLICKHOUSE_URL: http://softswitch:lab-only@172.30.0.32:8123/softswitch
+      HEP_LISTEN: 172.30.0.36:9060
+      # The SIP core's copies come from 172.30.0.10; what it sends over
+      # IPv6 leaves from fd30::10 (T-28), which is its own address too.
+      SIP_ADDRS: fd30::10
+      METRICS_LISTEN: 0.0.0.0:58093
+    restart: unless-stopped
+    ports: ["127.0.0.1:58093:58093"]
+    depends_on: [clickhouse]
+    networks: { lab: { ipv4_address: 172.30.0.36 } }
+
+  # Stands in for a collector of the operator's own (Homer): keeps what the
+  # SIP core sends it over HEP, so a scenario can check that it still gets
+  # its copy next to ours.
+  hep-sink:
+    build: ./images/sipp
+    entrypoint: ["sh", "-c", "exec socat -u UDP-RECV:9060,bind=172.30.0.35 OPEN:/tmp/hep.bin,creat,append"]
+    networks: { lab: { ipv4_address: 172.30.0.35 } }
+
+  # Calling side: started on demand by `make test-call` / `make load`.
+  sipp-uac:
+    build: ./images/sipp
+    <<: *ulimits
+    profiles: [tools]
+    cap_add: [NET_ADMIN]   # one scenario calls from a second, unknown address
+    volumes:
+      - ../../test:/work/test:ro
+      - ./certs:/work/certs:ro
+      - ../../test/load/out:/work/out
+    networks:
+      lab: { ipv4_address: 172.30.0.21, interface_name: eth0 }
+      lab6: { ipv6_address: "fd30::21", interface_name: eth1 }
+
+  route-engine:
+    build: { context: ../.., dockerfile: deploy/images/go/Dockerfile, args: { CMD: route-engine } }
+    <<: *ulimits
+    env_file: [./lab.env]
+    environment: &services-env
+      DATABASE_URL: postgres://softswitch:lab-only@172.30.0.30:5432/softswitch
+      REDIS_URL: redis://172.30.0.31:6379/0
+      NATS_URL: nats://172.30.0.33:4222
+      LISTEN: 0.0.0.0:58090
+      RELOAD_SEC: "5"
+      OPENSIPS_MI: 172.30.0.10:8899
+      CLICKHOUSE_URL: http://softswitch:lab-only@172.30.0.32:8123/softswitch
+      # Vendors' certificates are checked against the lab authority, every
+      # few seconds so that the scenarios need not wait.
+      TLS_CA_LIST: /etc/lab-tls/ca.crt
+      PEER_CHECK_SEC: "3"
+      SIP_TLS_ADDR: 172.30.0.10:5061
+      # How the SIP core's registrations with vendors stand, asked every
+      # two seconds.
+      REG_STATUS_SEC: "2"
+      # Registrations: short times so that the scenarios need not wait, and
+      # the lab's hook that delivers 8988… to the trunk "lab-nat", 8987… to
+      # "lab-nat-tls", 8986… to "lab-nat-mix" and 8603… to "lab-v6" (over
+      # IPv6, T-28) wherever they are
+      # registered (cmd/route-engine/lab.go). Neither is for production.
+      REG_MIN_EXPIRES: "2"
+      REG_NAT_EXPIRES: "30"
+      LAB_DELIVER: "8988=lab-nat,8987=lab-nat-tls,8986=lab-nat-mix,8603=lab-v6"
+      # Lab only: the decision on calls to 8719… comes 0.8 s late, so that a
+      # caller can give up while the SIP core is still waiting for it.
+      LAB_DECIDE_DELAY: "8719=800"
+      # Lab only: a call from 172.30.0.91, which no trunk matches, is taken
+      # on behalf of the client of the trunk "lab-nat" (engine.Config.Incoming;
+      # cmd/route-engine/lab.go). The address is a carrier's: a vendor
+      # connection in test/seed/lab-routing.sql, so the SIP core knows it.
+      LAB_INBOUND: "172.30.0.91=lab-nat"
+      # Call records wait on disk until NATS has them (ADR-0029); only the
+      # engine reads this. `make test-journal` stops NATS and kills the
+      # engine to see that none is lost.
+      CDR_JOURNAL_DIR: /var/lib/softswitch/cdr-journal
+    volumes:
+      - ./certs/ca.crt:/etc/lab-tls/ca.crt:ro
+      - engine-journal:/var/lib/softswitch/cdr-journal
+    depends_on: [postgres, redis, nats, rater]
+    ports: ["127.0.0.1:58090:58090"]
+    networks:
+      lab: { ipv4_address: 172.30.0.40, interface_name: eth0 }
+      lab6: { ipv6_address: "fd30::40", interface_name: eth1 }
+
+  # Applies the schema on start, then prices call legs from the queue.
+  rater:
+    build: { context: ../.., dockerfile: deploy/images/go/Dockerfile, args: { CMD: rater } }
+    environment:
+      <<: *services-env
+      METRICS_LISTEN: 0.0.0.0:58092
+    restart: on-failure
+    ports: ["127.0.0.1:58092:58092"]
+    depends_on: [postgres, redis, nats, clickhouse]
+    networks: { lab: { ipv4_address: 172.30.0.41 } }
+
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: softswitch
+      POSTGRES_PASSWORD: lab-only
+      POSTGRES_DB: softswitch
+    ports: ["127.0.0.1:56432:5432"]
+    networks: { lab: { ipv4_address: 172.30.0.30 } }
+
+  redis:
+    image: redis:7
+    ports: ["127.0.0.1:56379:6379"]
+    networks: { lab: { ipv4_address: 172.30.0.31 } }
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.8
+    <<: *ulimits
+    environment:
+      CLICKHOUSE_USER: softswitch
+      CLICKHOUSE_PASSWORD: lab-only
+      CLICKHOUSE_DB: softswitch
+    ports: ["127.0.0.1:58123:8123"]
+    networks: { lab: { ipv4_address: 172.30.0.32 } }
+
+  # Catches every e-mail the lab sends; nothing leaves the machine.
+  # Messages: http://127.0.0.1:58025
+  mail:
+    image: axllent/mailpit:v1.21
+    ports: ["127.0.0.1:58025:8025", "127.0.0.1:58026:1025"]
+    networks: { lab: { ipv4_address: 172.30.0.34 } }
+
+  nats:
+    image: nats:2.10
+    command: ["-js"]
+    networks: { lab: { ipv4_address: 172.30.0.33 } }
+
+volumes:
+  engine-journal:
+
+networks:
+  lab:
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
+  # IPv6 (T-28): a second network, IPv6 only, beside the first, for the SIP
+  # core, the media relay, the engine, the caller and an IPv6 vendor. A
+  # separate network rather than IPv6 added to "lab": every address on
+  # "lab" stays as it was, and the databases' containers are not recreated.
+  lab6:
+    enable_ipv4: false
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: fd30::/64

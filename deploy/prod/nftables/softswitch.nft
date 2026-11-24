@@ -1,0 +1,209 @@
+#!/usr/sbin/nft -f
+# SPDX-License-Identifier: AGPL-3.0-only
+#
+# Example network-layer rules for a single-server installation (T-10).
+# Guide: docs/09-kurulum.md, "Ağ katmanı koruması". The installer does NOT
+# apply this file; the server's administrator does, after reading the guide
+# and changing the values below. A wrong rule can cut the server off: apply
+# it with the timed rollback the guide shows.
+#
+# This is one layer of several. The SIP core and the engine still limit,
+# ban and refuse unknown sources on their own (pike, ban:, firewall_rules,
+# ADR-0017); these rules only keep heavy floods from reaching them and keep
+# every port that is not meant to be public closed.
+#
+# Load:   nft -f softswitch.nft && nft -f known-sources.nft
+# Check:  nft -c -f softswitch.nft          (make test-nft does it in Docker)
+#
+# Reloading this file deletes and recreates the table: the known-address
+# sets and the flood bans start empty, so load known-sources.nft right after
+# (known-sources.sh --apply does).
+
+# ---- variables: change these ------------------------------------------------
+# SIP: the SIP core's UDP and TLS ports (SIP_PORT, SIP_TLS_PORT of the opensips
+# container; 5060 and 5061 unless changed). There is no plain-TCP or
+# WebSocket listener.
+define SIP_UDP_PORT = 5060
+define SIP_TLS_PORT = 5061
+# Media: RTP_PORT_MIN-RTP_PORT_MAX of deploy/prod/.env.
+define RTP_PORTS = 30000-39999
+# Administration: SSH, and the addresses it is open to. 0.0.0.0/0 and ::/0
+# keep it open to everyone (as before these rules); narrow them to your own
+# networks once you know you can still reach the server.
+define SSH_PORT = 22
+define ADMIN_V4 = { 0.0.0.0/0 }
+define ADMIN_V6 = { ::/0 }
+# The panel over HTTPS (COMPOSE_PROFILES=https): Caddy on 80 and 443.
+# Without the https profile, remove the "tcp dport $WEB_PORTS" rule below.
+define WEB_PORTS = { 80, 443 }
+# The known-address sets (known_v4, known_v6) are declared in the table
+# below and filled by known-sources.nft (written by known-sources.sh from
+# the panel's trunks and vendor connections).
+#
+# Rates are written in the rules themselves (nft takes no variables there);
+# each is marked "RATE:". They are deliberately looser than the SIP core's
+# own limit for unknown sources (pike: 30 requests in 2 s), so that pike
+# stays the precise one and these catch only floods.
+#
+# "Known addresses only" mode: remove the leading "#known-only " from the two
+# lines marked so in the sip and sip_tls chains. Every SIP packet from an
+# address outside the known sets is then dropped (see the guide for what
+# that rules out: trunks that sign in with a password from changing
+# addresses).
+
+table inet softswitch {}
+delete table inet softswitch
+
+table inet softswitch {
+	# Customers' trunk addresses and networks and the vendors' addresses;
+	# filled by known-sources.nft. auto-merge: a single address inside a
+	# network listed as well is not a conflict.
+	set known_v4 {
+		type ipv4_addr
+		flags interval
+		auto-merge
+	}
+	set known_v6 {
+		type ipv6_addr
+		flags interval
+		auto-merge
+	}
+
+	# Sources over the SIP rate below, dropped for two minutes (as pike's
+	# ban). Not visible in the panel: the SIP core never sees them.
+	set sip_banned_v4 {
+		type ipv4_addr
+		flags dynamic, timeout
+		timeout 2m
+		size 65536
+	}
+	set sip_banned_v6 {
+		type ipv6_addr
+		flags dynamic, timeout
+		timeout 2m
+		size 65536
+	}
+	# Per-source packet counters for SIP over UDP.
+	set sip_rate_v4 {
+		type ipv4_addr
+		flags dynamic, timeout
+		timeout 1m
+		size 65536
+	}
+	set sip_rate_v6 {
+		type ipv6_addr
+		flags dynamic, timeout
+		timeout 1m
+		size 65536
+	}
+	# Per-source new connections to TLS, and connections open at once.
+	set tls_rate_v4 {
+		type ipv4_addr
+		flags dynamic, timeout
+		timeout 1m
+		size 65536
+	}
+	set tls_rate_v6 {
+		type ipv6_addr
+		flags dynamic, timeout
+		timeout 1m
+		size 65536
+	}
+	set tls_count_v4 {
+		type ipv4_addr
+		flags dynamic
+		size 65536
+	}
+	set tls_count_v6 {
+		type ipv6_addr
+		flags dynamic
+		size 65536
+	}
+
+	# SIP over UDP and media are not connection-tracked: a flood of spoofed
+	# sources would otherwise fill the connection table and take every
+	# other connection (SSH included) down with it. Their rules below match
+	# on ports, not on connection state.
+	chain raw_prerouting {
+		type filter hook prerouting priority raw; policy accept;
+		udp dport { $SIP_UDP_PORT, $RTP_PORTS } notrack
+		# Optional, single-homed servers only: drop packets whose source
+		# would not be routed back out of the interface they came in on
+		# (the nftables form of rp_filter; see the guide). Breaks
+		# asymmetric routing.
+		#fib saddr . iif oif missing drop
+	}
+	chain raw_output {
+		type filter hook output priority raw; policy accept;
+		udp sport { $SIP_UDP_PORT, $RTP_PORTS } notrack
+	}
+
+	chain input {
+		type filter hook input priority filter; policy drop;
+
+		iif "lo" accept
+		ct state established,related accept
+		ct state invalid drop
+		# The installation's own containers (Docker networks).
+		iifname "docker0" accept
+		iifname "br-*" accept
+
+		# ICMP: errors, and IPv6 neighbour discovery (without it IPv6
+		# stops working). RATE: pings.
+		icmp type { destination-unreachable, time-exceeded, parameter-problem } accept
+		icmp type echo-request limit rate 10/second burst 20 packets accept
+		icmpv6 type { destination-unreachable, packet-too-big, time-exceeded, parameter-problem, nd-router-solicit, nd-router-advert, nd-neighbor-solicit, nd-neighbor-advert } accept
+		icmpv6 type echo-request limit rate 10/second burst 20 packets accept
+
+		# RATE: new SSH connections from the administrators' addresses.
+		tcp dport $SSH_PORT ip saddr $ADMIN_V4 ct state new limit rate 10/minute burst 20 packets accept
+		tcp dport $SSH_PORT ip6 saddr $ADMIN_V6 ct state new limit rate 10/minute burst 20 packets accept
+		tcp dport $WEB_PORTS accept
+
+		udp dport $SIP_UDP_PORT jump sip
+		tcp dport $SIP_TLS_PORT jump sip_tls
+		# Media from anywhere: callers' media often comes from other
+		# addresses than their signalling. The relay ignores packets for
+		# ports no call holds.
+		udp dport $RTP_PORTS accept
+
+		# Everything else is dropped by the policy, the management ports
+		# included (API 58080, engine 58090, metrics, OpenSIPS 8888/8899,
+		# rtpengine 2223/2225, data stores): they listen on 127.0.0.1
+		# only, this is the second line. Counted, so a forgotten port shows.
+		counter comment "dropped by policy"
+	}
+
+	chain sip {
+		ip saddr @sip_banned_v4 drop
+		ip6 saddr @sip_banned_v6 drop
+		ip saddr @known_v4 accept
+		ip6 saddr @known_v6 accept
+		#known-only drop
+		# RATE: per unknown source, 100 packets a second (burst 200); a
+		# source over it is dropped for two minutes.
+		update @sip_rate_v4 { ip saddr limit rate over 100/second burst 200 packets } add @sip_banned_v4 { ip saddr } drop
+		update @sip_rate_v6 { ip6 saddr limit rate over 100/second burst 200 packets } add @sip_banned_v6 { ip6 saddr } drop
+		# RATE: all unknown sources together. Spoofed floods use a new
+		# source for every packet and pass the per-source limit; this caps
+		# what reaches the SIP core from them. Known sources were accepted
+		# above and do not count.
+		limit rate over 2000/second burst 4000 packets drop
+		accept
+	}
+
+	chain sip_tls {
+		# Only new connections get here (established ones were accepted
+		# in input). TCP cannot be opened from a spoofed address.
+		ip saddr @known_v4 accept
+		ip6 saddr @known_v6 accept
+		#known-only drop
+		# RATE: per unknown source, at most 50 connections open at once
+		# and 10 new ones a second (burst 20).
+		add @tls_count_v4 { ip saddr ct count over 50 } reject with tcp reset
+		add @tls_count_v6 { ip6 saddr ct count over 50 } reject with tcp reset
+		update @tls_rate_v4 { ip saddr limit rate over 10/second burst 20 packets } drop
+		update @tls_rate_v6 { ip6 saddr limit rate over 10/second burst 20 packets } drop
+		accept
+	}
+}

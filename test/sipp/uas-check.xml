@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="ISO-8859-1" ?>
+<!-- SPDX-License-Identifier: AGPL-3.0-only -->
+<!DOCTYPE scenario SYSTEM "sipp.dtd">
+<!-- A vendor that looks at what it is sent and refuses (488) a call that is
+     not as the scenario expects; test/sipp/connlab.sh fills in the
+     placeholders. A failed check alone would not stop SIPp from answering.
+       __LINE__    must match the message (the request line is its start)
+       __FROM__    must match the From header
+       __PAI__     looked for in P-Asserted-Identity; the labels __PAI_YES__
+                   and __PAI_NO__ say where to go when it is, or is not, found
+       __SDP__     must match the offer; __SDPNOT__ must not
+       __ANSWER__  the payload type and codec this vendor answers with -->
+<scenario name="uas-check">
+  <recv request="INVITE" crlf="true">
+    <action>
+      <ereg regexp="__LINE__" search_in="msg" assign_to="line" />
+      <ereg regexp="__FROM__" search_in="hdr" header="From:" assign_to="from" />
+      <ereg regexp="__PAI__" search_in="hdr" header="P-Asserted-Identity:" assign_to="pai" />
+      <ereg regexp="__SDP__" search_in="body" assign_to="sdp" />
+      <ereg regexp="__SDPNOT__" search_in="body" assign_to="sdpnot" />
+    </action>
+  </recv>
+  <nop test="line" next="l1" />
+  <nop next="refuse" />
+  <label id="l1" />
+  <nop test="from" next="l2" />
+  <nop next="refuse" />
+  <label id="l2" />
+  <nop test="pai" next="__PAI_YES__" />
+  <nop next="__PAI_NO__" />
+  <label id="l3" />
+  <nop test="sdp" next="l4" />
+  <nop next="refuse" />
+  <label id="l4" />
+  <nop test="sdpnot" next="refuse" />
+  <nop next="accept" />
+
+  <label id="refuse" />
+  <send>
+    <![CDATA[
+      SIP/2.0 488 Not Acceptable Here
+      [last_Via:]
+      [last_From:]
+      [last_To:];tag=[pid]SIPpTag01[call_number]
+      [last_Call-ID:]
+      [last_CSeq:]
+      Content-Length: 0
+    ]]>
+  </send>
+  <recv request="ACK" />
+  <!-- A refusal is this scenario failing: nothing more will come. -->
+  <recv request="INFO" timeout="300" />
+
+  <label id="accept" />
+  <send>
+    <![CDATA[
+      SIP/2.0 180 Ringing
+      [last_Via:]
+      [last_From:]
+      [last_To:];tag=[pid]SIPpTag01[call_number]
+      [last_Call-ID:]
+      [last_CSeq:]
+      Contact: <sip:[local_ip]:[local_port];transport=[transport]>
+      Content-Length: 0
+    ]]>
+  </send>
+  <send retrans="500">
+    <![CDATA[
+      SIP/2.0 200 OK
+      [last_Via:]
+      [last_From:]
+      [last_To:];tag=[pid]SIPpTag01[call_number]
+      [last_Call-ID:]
+      [last_CSeq:]
+      Contact: <sip:[local_ip]:[local_port];transport=[transport]>
+      Content-Type: application/sdp
+      Content-Length: [len]
+
+      v=0
+      o=user1 53655765 2353687637 IN IP[local_ip_type] [local_ip]
+      s=-
+      c=IN IP[media_ip_type] [media_ip]
+      t=0 0
+      m=audio [media_port] RTP/AVP __ANSWER_PT__
+      a=rtpmap:__ANSWER_PT__ __ANSWER_CODEC__/8000
+    ]]>
+  </send>
+  <recv request="ACK" optional="true" crlf="true" />
+  <recv request="BYE" />
+  <send>
+    <![CDATA[
+      SIP/2.0 200 OK
+      [last_Via:]
+      [last_From:]
+      [last_To:]
+      [last_Call-ID:]
+      [last_CSeq:]
+      Content-Length: 0
+    ]]>
+  </send>
+</scenario>

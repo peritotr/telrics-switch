@@ -1,0 +1,209 @@
+<?xml version="1.0" encoding="ISO-8859-1" ?>
+<!-- SPDX-License-Identifier: AGPL-3.0-only -->
+<!DOCTYPE scenario SYSTEM "sipp.dtd">
+<!-- A caller for new INVITEs without an offer within a call (T-43,
+     ADR-0043; RFC 3261 14.1, RFC 3264 8). The call is set up as usual
+     (PCMA and key presses offered), then:
+       1. this caller sends a new INVITE without an offer; the vendor's
+          offer in the 200 must come through the media relay (its
+          address) with PCMA and no PCMU; the ACK answers it;
+       2. the vendor sends a new INVITE without an offer; this caller makes
+          the offer in its 200, and the answer in the vendor's ACK must
+          come through the relay;
+       3. plays __RTP__ (a capture file of PCMA audio) and hangs up
+          __WAIT__ ms later.
+     SIPp takes any 200 for the one it waits for, so the answers are
+     checked for their CSeq. -->
+<scenario name="uac-relate">
+  <send retrans="500">
+    <![CDATA[
+      INVITE sip:[service]@[remote_ip]:[remote_port] SIP/2.0
+      Via: SIP/2.0/[transport] [local_ip]:[local_port];branch=z9hG4bK-[pid]-[call_number]-inv
+      From: sipp <sip:sipp@[local_ip]:[local_port]>;tag=[pid]SIPpTag00[call_number]
+      To: [service] <sip:[service]@[remote_ip]:[remote_port]>
+      Call-ID: [call_id]
+      CSeq: 1 INVITE
+      Contact: <sip:sipp@[local_ip]:[local_port]>
+      Max-Forwards: 70
+      Content-Type: application/sdp
+      Content-Length: [len]
+
+      v=0
+      o=user1 53655765 2353687637 IN IP[local_ip_type] [local_ip]
+      s=-
+      c=IN IP[media_ip_type] [media_ip]
+      t=0 0
+      m=audio [media_port] RTP/AVP 8 101
+      a=rtpmap:8 PCMA/8000
+      a=rtpmap:101 telephone-event/8000
+    ]]>
+  </send>
+  <recv response="100" optional="true" />
+  <recv response="180" optional="true" />
+  <recv response="183" optional="true" />
+  <recv response="200" rtd="true" rrs="true" />
+  <send>
+    <![CDATA[
+      ACK [next_url] SIP/2.0
+      Via: SIP/2.0/[transport] [local_ip]:[local_port];branch=z9hG4bK-[pid]-[call_number]-ack
+      [routes]
+      From: sipp <sip:sipp@[local_ip]:[local_port]>;tag=[pid]SIPpTag00[call_number]
+      To: [service] <sip:[service]@[remote_ip]:[remote_port]>[peer_tag_param]
+      Call-ID: [call_id]
+      CSeq: 1 ACK
+      Max-Forwards: 70
+      Content-Length: 0
+    ]]>
+  </send>
+
+  <!-- 1. A new INVITE without an offer. -->
+  <pause milliseconds="300" />
+  <send retrans="500">
+    <![CDATA[
+      INVITE [next_url] SIP/2.0
+      Via: SIP/2.0/[transport] [local_ip]:[local_port];branch=z9hG4bK-[pid]-[call_number]-re1
+      [routes]
+      From: sipp <sip:sipp@[local_ip]:[local_port]>;tag=[pid]SIPpTag00[call_number]
+      To: [service] <sip:[service]@[remote_ip]:[remote_port]>[peer_tag_param]
+      Call-ID: [call_id]
+      CSeq: 2 INVITE
+      Contact: <sip:sipp@[local_ip]:[local_port]>
+      Max-Forwards: 70
+      Content-Length: 0
+    ]]>
+  </send>
+  <recv response="100" optional="true" />
+  <recv response="200">
+    <action>
+      <ereg regexp="^ *2 INVITE" search_in="hdr" header="CSeq:" assign_to="cseq2" />
+      <ereg regexp="c=IN IP4 172\.30\.0\.11" search_in="body" assign_to="relayed2" />
+      <ereg regexp="m=audio [0-9]+ RTP/AVP 8([^0-9]|$)" search_in="body" assign_to="pcma2" />
+      <ereg regexp="PCMU" search_in="body" assign_to="pcmu2" />
+    </action>
+  </recv>
+  <send>
+    <![CDATA[
+      ACK [next_url] SIP/2.0
+      Via: SIP/2.0/[transport] [local_ip]:[local_port];branch=z9hG4bK-[pid]-[call_number]-re1ack
+      [routes]
+      From: sipp <sip:sipp@[local_ip]:[local_port]>;tag=[pid]SIPpTag00[call_number]
+      To: [service] <sip:[service]@[remote_ip]:[remote_port]>[peer_tag_param]
+      Call-ID: [call_id]
+      CSeq: 2 ACK
+      Max-Forwards: 70
+      Content-Type: application/sdp
+      Content-Length: [len]
+
+      v=0
+      o=user1 53655765 2353687638 IN IP[local_ip_type] [local_ip]
+      s=-
+      c=IN IP[media_ip_type] [media_ip]
+      t=0 0
+      m=audio [media_port] RTP/AVP 8 101
+      a=rtpmap:8 PCMA/8000
+      a=rtpmap:101 telephone-event/8000
+    ]]>
+  </send>
+
+  <!-- 2. The vendor's new INVITE without an offer: this caller makes it. -->
+  <recv request="INVITE" timeout="10000" ontimeout="checks">
+    <action>
+      <ereg regexp="m=audio" search_in="body" assign_to="offered3" />
+    </action>
+  </recv>
+  <send retrans="500">
+    <![CDATA[
+      SIP/2.0 200 OK
+      [last_Via:]
+      [last_From:]
+      [last_To:]
+      [last_Call-ID:]
+      [last_CSeq:]
+      Contact: <sip:sipp@[local_ip]:[local_port]>
+      Content-Type: application/sdp
+      Content-Length: [len]
+
+      v=0
+      o=user1 53655765 2353687639 IN IP[local_ip_type] [local_ip]
+      s=-
+      c=IN IP[media_ip_type] [media_ip]
+      t=0 0
+      m=audio [media_port] RTP/AVP 8 101
+      a=rtpmap:8 PCMA/8000
+      a=rtpmap:101 telephone-event/8000
+    ]]>
+  </send>
+  <recv request="ACK">
+    <action>
+      <ereg regexp="c=IN IP4 172\.30\.0\.11" search_in="body" assign_to="relayed3" />
+      <ereg regexp="m=audio [0-9]+ RTP/AVP 8([^0-9]|$)" search_in="body" assign_to="pcma3" />
+    </action>
+  </recv>
+
+  <!-- Every check, once the requests are over. -->
+  <label id="checks" />
+  <nop test="pcmu2" next="bad" />
+  <nop test="offered3" next="bad" />
+  <nop test="cseq2" next="k1" />
+  <nop next="bad" />
+  <label id="k1" />
+  <nop test="relayed2" next="k2" />
+  <nop next="bad" />
+  <label id="k2" />
+  <nop test="pcma2" next="k3" />
+  <nop next="bad" />
+  <label id="k3" />
+  <nop test="relayed3" next="k4" />
+  <nop next="bad" />
+  <label id="k4" />
+  <nop test="pcma3" next="k5" />
+  <nop next="bad" />
+  <label id="k5" />
+
+  <!-- 3. Audio, then the caller hangs up. -->
+  <nop><action><exec play_pcap_audio="__RTP__" /></action></nop>
+  <pause milliseconds="__WAIT__" />
+  <send retrans="500">
+    <![CDATA[
+      BYE [next_url] SIP/2.0
+      Via: SIP/2.0/[transport] [local_ip]:[local_port];branch=z9hG4bK-[pid]-[call_number]-bye
+      [routes]
+      From: sipp <sip:sipp@[local_ip]:[local_port]>;tag=[pid]SIPpTag00[call_number]
+      To: [service] <sip:[service]@[remote_ip]:[remote_port]>[peer_tag_param]
+      Call-ID: [call_id]
+      CSeq: 3 BYE
+      Max-Forwards: 70
+      Content-Length: 0
+    ]]>
+  </send>
+  <recv response="200" crlf="true">
+    <action>
+      <ereg regexp="^ *3 BYE" search_in="hdr" header="CSeq:" assign_to="cseq3" />
+    </action>
+  </recv>
+  <nop test="cseq3" next="end" />
+  <nop next="failed" />
+
+  <!-- A call that is not as expected is hung up all the same, so that it
+       leaves nothing behind in the switch, and this scenario fails. -->
+  <label id="bad" />
+  <send retrans="500">
+    <![CDATA[
+      BYE [next_url] SIP/2.0
+      Via: SIP/2.0/[transport] [local_ip]:[local_port];branch=z9hG4bK-[pid]-[call_number]-badbye
+      [routes]
+      From: sipp <sip:sipp@[local_ip]:[local_port]>;tag=[pid]SIPpTag00[call_number]
+      To: [service] <sip:[service]@[remote_ip]:[remote_port]>[peer_tag_param]
+      Call-ID: [call_id]
+      CSeq: 4 BYE
+      Max-Forwards: 70
+      Content-Length: 0
+    ]]>
+  </send>
+  <recv response="200" timeout="5000" ontimeout="failed" />
+  <label id="failed" />
+  <nop><action><error message="the call was not as expected" /></action></nop>
+
+  <label id="end" />
+  <Reference variables="cseq2,relayed2,pcma2,pcmu2,offered3,relayed3,pcma3,cseq3" />
+</scenario>

@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="ISO-8859-1" ?>
+<!-- SPDX-License-Identifier: AGPL-3.0-only -->
+<!DOCTYPE scenario SYSTEM "sipp.dtd">
+<!-- Answering side that echoes Record-Route (the built-in uas scenario does not). -->
+<scenario name="uas-record-route">
+  <!-- This vendor is reached without TLS, so it must be offered plain RTP
+       even when the caller's own side is encrypted, and the caller's
+       credentials must have stopped at the switch. Anything else is refused
+       with 488: a failed check alone would not stop SIPp from answering.
+       So is a caller number the lab's rules change (90850… becomes 0850…)
+       that arrives unchanged: callers of that scenario call themselves
+       "rewritten", and no header may carry the old number along. -->
+  <recv request="INVITE" crlf="true">
+    <action>
+      <ereg regexp="m=audio [0-9]+ RTP/AVP " search_in="body" assign_to="offered" />
+      <ereg regexp="Digest" search_in="hdr" header="Authorization:" assign_to="creds" />
+      <ereg regexp="rewritten" search_in="hdr" header="From:" assign_to="marked" />
+      <ereg regexp="rewritten &lt;sip:0850[0-9]+@" search_in="hdr" header="From:" assign_to="shown" />
+      <ereg regexp="90850" search_in="hdr" header="P-Asserted-Identity:" assign_to="leaked" />
+      <ereg regexp="." search_in="hdr" header="Remote-Party-ID:" assign_to="party" />
+    </action>
+  </recv>
+  <nop test="creds" next="refuse" />
+  <nop test="leaked" next="refuse" />
+  <nop test="marked" next="cli" />
+  <nop next="media" />
+  <label id="cli" />
+  <nop test="party" next="refuse" />
+  <nop test="shown" next="media" />
+  <nop next="refuse" />
+  <label id="media" />
+  <nop test="offered" next="accept" />
+
+  <label id="refuse" />
+  <send>
+    <![CDATA[
+      SIP/2.0 488 Not Acceptable Here
+      [last_Via:]
+      [last_From:]
+      [last_To:];tag=[pid]SIPpTag01[call_number]
+      [last_Call-ID:]
+      [last_CSeq:]
+      Content-Length: 0
+    ]]>
+  </send>
+  <recv request="ACK" />
+  <nop next="end" />
+
+  <label id="accept" />
+  <send>
+    <![CDATA[
+      SIP/2.0 180 Ringing
+      [last_Via:]
+      [last_From:]
+      [last_To:];tag=[pid]SIPpTag01[call_number]
+      [last_Call-ID:]
+      [last_CSeq:]
+      [last_Record-Route:]
+      Contact: <sip:[local_ip]:[local_port];transport=[transport]>
+      Content-Length: 0
+    ]]>
+  </send>
+
+  <send retrans="500">
+    <![CDATA[
+      SIP/2.0 200 OK
+      [last_Via:]
+      [last_From:]
+      [last_To:];tag=[pid]SIPpTag01[call_number]
+      [last_Call-ID:]
+      [last_CSeq:]
+      [last_Record-Route:]
+      Contact: <sip:[local_ip]:[local_port];transport=[transport]>
+      Content-Type: application/sdp
+      Content-Length: [len]
+
+      v=0
+      o=user1 53655765 2353687637 IN IP[local_ip_type] [local_ip]
+      s=-
+      c=IN IP[media_ip_type] [media_ip]
+      t=0 0
+      m=audio [media_port] RTP/AVP 8
+      a=rtpmap:8 PCMA/8000
+    ]]>
+  </send>
+
+  <recv request="ACK" optional="true" rtd="true" crlf="true" />
+  <recv request="BYE" />
+
+  <send>
+    <![CDATA[
+      SIP/2.0 200 OK
+      [last_Via:]
+      [last_From:]
+      [last_To:]
+      [last_Call-ID:]
+      [last_CSeq:]
+      Contact: <sip:[local_ip]:[local_port];transport=[transport]>
+      Content-Length: 0
+    ]]>
+  </send>
+
+  <label id="end" />
+  <timewait milliseconds="4000" />
+</scenario>

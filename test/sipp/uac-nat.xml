@@ -1,0 +1,201 @@
+<?xml version="1.0" encoding="ISO-8859-1" ?>
+<!-- SPDX-License-Identifier: AGPL-3.0-only -->
+<!DOCTYPE scenario SYSTEM "sipp.dtd">
+<!-- A caller behind address translation (NAT) that signs in (-au, -ap). It
+     names a private address for itself (10.0.0.6:5060 in Via, Contact and
+     SDP) while its requests really come from the lab address and port SIPp
+     runs on; its Via carries no "rport". Everything meant for it must
+     arrive where its requests come from, or the scenario fails: the answers
+     to its INVITE and BYE, and a BYE from the other side. The answer's SDP
+     must name the media relay.
+       __END__  "hangup": the caller ends the call after the pause;
+                "wait": it waits for the other side or the switch to end it;
+                "reoffer": the other side puts the call on hold first, then
+                the caller ends the call after the pause
+     Lines marked rtp are dropped by natlab.sh unless the call is to send
+     audio: 100 packets from the port SIPp really uses for media, which is
+     not the port its SDP names (4000). SIPp sends them from the port its
+     media_port keyword gives, and only once a message has used the
+     keyword on a line that says "audio": hence the header that does. -->
+<scenario name="uac-nat">
+  <send retrans="500">
+    <![CDATA[
+      INVITE sip:[service]@[remote_ip]:[remote_port] SIP/2.0
+      Via: SIP/2.0/[transport] 10.0.0.6:5060;branch=[branch]
+      From: natted <sip:lab-nat-2@10.0.0.6:5060>;tag=[pid]SIPpTag00[call_number]
+      To: [service] <sip:[service]@[remote_ip]:[remote_port]>
+      Call-ID: [call_id]
+      CSeq: 1 INVITE
+      Contact: <sip:lab-nat-2@10.0.0.6:5060>
+      Max-Forwards: 70
+      Content-Type: application/sdp
+      Content-Length: [len]
+
+      v=0
+      o=user1 53655765 2353687637 IN IP4 10.0.0.6
+      s=-
+      c=IN IP4 10.0.0.6
+      t=0 0
+      m=audio 4000 RTP/AVP 8
+      a=rtpmap:8 PCMA/8000
+    ]]>
+  </send>
+
+  <recv response="100" optional="true" />
+  <recv response="401" auth="true" />
+
+  <send>
+    <![CDATA[
+      ACK sip:[service]@[remote_ip]:[remote_port] SIP/2.0
+      [last_Via:]
+      From: natted <sip:lab-nat-2@10.0.0.6:5060>;tag=[pid]SIPpTag00[call_number]
+      To: [service] <sip:[service]@[remote_ip]:[remote_port]>[peer_tag_param]
+      Call-ID: [call_id]
+      CSeq: 1 ACK
+      Max-Forwards: 70
+      Content-Length: 0
+    ]]>
+  </send>
+
+  <send retrans="500">
+    <![CDATA[
+      INVITE sip:[service]@[remote_ip]:[remote_port] SIP/2.0
+      Via: SIP/2.0/[transport] 10.0.0.6:5060;branch=[branch]
+      From: natted <sip:lab-nat-2@10.0.0.6:5060>;tag=[pid]SIPpTag01[call_number]
+      To: [service] <sip:[service]@[remote_ip]:[remote_port]>
+      Call-ID: [call_id]
+      CSeq: 2 INVITE
+      Contact: <sip:lab-nat-2@10.0.0.6:5060>
+      [authentication]
+      Max-Forwards: 70
+      X-Lab-Real-Port: audio [media_port]
+      Content-Type: application/sdp
+      Content-Length: [len]
+
+      v=0
+      o=user1 53655765 2353687637 IN IP4 10.0.0.6
+      s=-
+      c=IN IP4 10.0.0.6
+      t=0 0
+      m=audio 4000 RTP/AVP 8
+      a=rtpmap:8 PCMA/8000
+    ]]>
+  </send>
+
+  <recv response="100" optional="true" />
+  <recv response="180" optional="true" />
+  <recv response="183" optional="true" />
+  <recv response="200" rtd="true" rrs="true">
+    <action>
+      <ereg regexp="c=IN IP4 172\.30\.0\.11" search_in="body" check_it="true" assign_to="relayed" />
+    </action>
+  </recv>
+
+  <send>
+    <![CDATA[
+      ACK [next_url] SIP/2.0
+      Via: SIP/2.0/[transport] 10.0.0.6:5060;branch=[branch]
+      [routes]
+      From: natted <sip:lab-nat-2@10.0.0.6:5060>;tag=[pid]SIPpTag01[call_number]
+      To: [service] <sip:[service]@[remote_ip]:[remote_port]>[peer_tag_param]
+      Call-ID: [call_id]
+      CSeq: 2 ACK
+      Max-Forwards: 70
+      Content-Length: 0
+    ]]>
+  </send>
+  <nop><action><exec play_pcap_audio="/work/out/nat-rtp.pcap" /></action></nop><!-- rtp -->
+  <nop next="__END__" />
+
+  <label id="hangup" />
+  <pause />
+  <send retrans="500">
+    <![CDATA[
+      BYE [next_url] SIP/2.0
+      Via: SIP/2.0/[transport] 10.0.0.6:5060;branch=[branch]
+      [routes]
+      From: natted <sip:lab-nat-2@10.0.0.6:5060>;tag=[pid]SIPpTag01[call_number]
+      To: [service] <sip:[service]@[remote_ip]:[remote_port]>[peer_tag_param]
+      Call-ID: [call_id]
+      CSeq: 3 BYE
+      Max-Forwards: 70
+      Content-Length: 0
+    ]]>
+  </send>
+  <recv response="200" crlf="true" next="done" />
+
+  <label id="wait" />
+  <recv request="BYE" timeout="20000" ontimeout="late" />
+  <send next="done">
+    <![CDATA[
+      SIP/2.0 200 OK
+      [last_Via:]
+      [last_From:]
+      [last_To:]
+      [last_Call-ID:]
+      [last_CSeq:]
+      Content-Length: 0
+    ]]>
+  </send>
+
+  <label id="late" />
+  <nop><action><error message="no BYE reached the caller behind address translation" /></action></nop>
+
+  <!-- The other side puts the call on hold (re-INVITE): the request must
+       arrive where this caller's requests come from, through the relay. -->
+  <label id="reoffer" />
+  <recv request="INVITE" timeout="10000" ontimeout="unreached">
+    <action>
+      <ereg regexp="c=IN IP4 172\.30\.0\.11" search_in="body" assign_to="relayed2" />
+      <ereg regexp="a=sendonly" search_in="body" assign_to="held" />
+    </action>
+  </recv>
+  <nop test="relayed2" next="reoffer-held" />
+  <nop next="reoffer-refuse" />
+  <label id="reoffer-held" />
+  <nop test="held" next="reoffer-answer" />
+  <label id="reoffer-refuse" />
+  <send>
+    <![CDATA[
+      SIP/2.0 488 Not Acceptable Here
+      [last_Via:]
+      [last_From:]
+      [last_To:]
+      [last_Call-ID:]
+      [last_CSeq:]
+      Content-Length: 0
+    ]]>
+  </send>
+  <recv request="ACK" />
+  <nop><action><error message="the new offer did not come through the relay" /></action></nop>
+  <label id="reoffer-answer" />
+  <send retrans="500">
+    <![CDATA[
+      SIP/2.0 200 OK
+      [last_Via:]
+      [last_From:]
+      [last_To:]
+      [last_Call-ID:]
+      [last_CSeq:]
+      Contact: <sip:lab-nat-2@10.0.0.6:5060>
+      Content-Type: application/sdp
+      Content-Length: [len]
+
+      v=0
+      o=user1 53655765 2353687638 IN IP4 10.0.0.6
+      s=-
+      c=IN IP4 10.0.0.6
+      t=0 0
+      m=audio 4000 RTP/AVP 8
+      a=rtpmap:8 PCMA/8000
+      a=recvonly
+    ]]>
+  </send>
+  <recv request="ACK" />
+  <nop next="hangup" />
+  <label id="unreached" />
+  <nop><action><error message="no new offer reached the caller behind address translation" /></action></nop>
+
+  <label id="done" />
+  <Reference variables="relayed" />
+</scenario>

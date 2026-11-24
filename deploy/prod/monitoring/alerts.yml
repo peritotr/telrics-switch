@@ -1,0 +1,254 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Alert rules. "critical" means calls or money are affected now; "warning"
+# means they will be if nobody looks. Thresholds are starting points, to be
+# tuned once there is real traffic to compare against.
+groups:
+  - name: softswitch
+    rules:
+      - alert: ServiceDown
+        expr: up{job="softswitch"} == 0
+        for: 1m
+        labels: { severity: critical }
+        annotations:
+          summary: "{{ $labels.service }} does not answer"
+          description: "Prometheus has not been able to read {{ $labels.service }} for a minute. `docker compose ps` and its logs say why."
+
+      - alert: SIPCoreRestarted
+        expr: resets(opensips_rcv_requests{job="softswitch"}[15m]) > 0
+        labels: { severity: critical }
+        annotations:
+          summary: "The SIP core restarted"
+          description: "Its counters started again from zero: the process died and was started again. Calls in progress at that moment were dropped. Look for 'CRITICAL' and 'exited by a signal' in its log."
+
+      - alert: SIPCoreMemoryLow
+        expr: opensips_free_size / opensips_total_size < 0.1
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "The SIP core has less than 10% of its shared memory free"
+          description: "When it runs out, new calls fail. Raise OPENSIPS_SHM_MB, or look for calls that never end."
+
+      - alert: DecisionSlow
+        expr: histogram_quantile(0.99, sum by (le) (rate(softswitch_engine_decision_seconds_bucket[5m]))) > 0.01
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "Call decisions take longer than 10 ms (p99)"
+          description: "The budget for deciding a call is 10 ms. Redis is the only thing the engine waits for on this path."
+
+      - alert: ConfigurationStale
+        expr: softswitch_engine_snapshot_age_seconds > 300
+        for: 1m
+        labels: { severity: critical }
+        annotations:
+          summary: "The engine has not loaded the configuration for five minutes"
+          description: "Calls are decided with old routes, prices and balances. The engine's log shows why loading fails; usually the database is unreachable."
+
+      - alert: EngineStateErrors
+        expr: increase(softswitch_engine_event_errors_total[5m]) > 0 or increase(softswitch_engine_sweep_errors_total[5m]) > 0 or increase(softswitch_engine_register_errors_total[5m]) > 0
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "The engine cannot reach its call state"
+          description: "Call events, reservation checks or registrations fail, which means Redis is unreachable. Calls may outlast their funds, and trunks cannot register or be called, until it is back."
+
+      - alert: HangupFailing
+        expr: increase(softswitch_engine_hangup_errors_total[10m]) > 0
+        labels: { severity: critical }
+        annotations:
+          summary: "The engine cannot end calls whose funds ran out"
+          description: "The SIP core did not take the request. Such calls run on until their duration limit and may spend money that was not reserved."
+
+      - alert: EngineRefusingCallers
+        expr: increase(softswitch_engine_unauthorized_total[5m]) > 20
+        labels: { severity: critical }
+        annotations:
+          summary: "The engine is refusing requests that do not carry its token"
+          description: "If the SIP core or the API was given another ENGINE_TOKEN than the engine, every call fails with 503 and the live views are empty: the three must hold the same value (.env, then `docker compose up -d`). Otherwise something else is trying the engine's port; its log names the address once a minute."
+
+      - alert: MostCallsRefused
+        expr: >
+          sum(rate(softswitch_engine_authorize_total{result="refused"}[5m]))
+          / sum(rate(softswitch_engine_authorize_total[5m])) > 0.5
+          and sum(rate(softswitch_engine_authorize_total[5m])) > 1
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "More than half of the calls are refused"
+          description: "Could be one customer out of funds or sending bad traffic, or a routing change that left destinations without a route. The panel's live view shows which."
+
+      - alert: TransfersRefused
+        expr: increase(opensips_refer_refused{job="softswitch"}[15m]) > 20
+        labels: { severity: warning }
+        annotations:
+          summary: "More than 20 transfers (REFER) refused in 15 minutes"
+          description: "The SIP core refuses every transfer within a call with 403 and the call goes on (ADR-0028): the switch carries no transfers. Many of them mean a customer's equipment keeps trying (its users see transfers fail; it should transfer by itself, or a decision on transfers is needed), or someone is trying to place calls through transfers."
+
+      - alert: CallsRefusedNoMedia
+        expr: increase(opensips_media_refused{job="softswitch"}[5m]) > 0
+        labels: { severity: critical }
+        annotations:
+          summary: "Calls are refused because the media relay cannot take them"
+          description: "The SIP core refuses a call with 503, and tries no other route, when the media relay does not answer or has no ports left (ADR-0030). If ServiceDown names rtpengine too, it is stopped or unreachable: `docker compose ps` and its log. Otherwise its log says 'Ran out of ports': too many calls for its port range (RTP_PORT_MIN/RTP_PORT_MAX), or sessions that are never deleted."
+
+      - alert: TranscodingAtLimit
+        expr: increase(softswitch_engine_transcode_full_total[10m]) > 0
+        labels: { severity: warning }
+        annotations:
+          summary: "Calls are passed over a route because codec translation is at its limit"
+          description: "As many calls as TRANSCODE_MAX are having their audio translated by the media relay, so a route that needs translation is skipped: the call goes to the next route, or is refused if there is none (T-09). Raise TRANSCODE_MAX if the relay's processor has room (top, or the host's CPU graph), or give the trunks and connections involved a codec in common."
+
+      - alert: MediaPortsLow
+        expr: >
+          sum(rtpengine_ports_free) / (sum(rtpengine_ports_free) + sum(rtpengine_ports_used)) < 0.1
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "The media relay has less than 10% of its ports free"
+          description: "Each call takes four ports. When none is left, new calls are refused with 503 (CallsRefusedNoMedia). Widen RTP_PORT_MIN/RTP_PORT_MAX (and the firewall's media range), or look for calls that never end."
+
+      - alert: CallsLosingMedia
+        expr: >
+          sum(rate(rtpengine_closed_sessions_total{reason="timeout"}[10m]))
+          / sum(rate(rtpengine_sessions_total[10m])) > 0.05
+          and sum(rate(rtpengine_sessions_total[10m])) > 0.1
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "More than 5% of calls are ended because their media stopped"
+          description: "The media relay ends a call after RTP_TIMEOUT seconds without audio (ADR-0027). Many such calls point at audio that never arrives: a wrong RTP_INTERFACE or advertised address, a firewall closing the media port range, or one customer's devices behind address translation. One-sided audio keeps a call up, so these calls had none either way."
+
+      - alert: CallRecordsWaiting
+        expr: softswitch_rater_queue_pending > 20000 or softswitch_engine_cdr_queue_pending > 5000
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "Call records pile up before being stored"
+          description: "Records are not lost while they wait, but balances fall behind the calls made. Check the rater and the queue (NATS)."
+
+      - alert: CallRecordJournalFailing
+        expr: increase(softswitch_engine_cdr_journal_errors_total{kind=~"write|read"}[5m]) > 0
+        labels: { severity: critical }
+        annotations:
+          summary: "The engine cannot write or read its journal of call records"
+          description: "Records the disk does not take wait in memory and are lost if the engine stops before NATS has them (ADR-0029). Look at the disk under the engine-journal volume (full, read-only, failing) and at the engine's log."
+
+      - alert: CallRecordJournalBacklog
+        expr: softswitch_engine_cdr_journal_records > 1000
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "Call records wait on the engine's disk for NATS"
+          description: "{{ $value }} records have not reached NATS for ten minutes. They are safe on disk and are sent when NATS takes them again, but balances fall behind the calls made. Check NATS."
+
+      - alert: CallRecordJournalFilling
+        expr: >
+          softswitch_engine_cdr_journal_bytes / softswitch_engine_cdr_journal_max_bytes > 0.8
+          or increase(softswitch_engine_cdr_journal_errors_total{kind="full"}[5m]) > 0
+        labels: { severity: critical }
+        annotations:
+          summary: "The engine's journal of call records is nearly full"
+          description: "Once it is full, new records wait in memory (lost if the engine stops), and when that queue is full too the end of every call waits. Bring NATS back, or raise CDR_JOURNAL_MAX_MB if the disk has room."
+
+      - alert: CallsExpiredUnreported
+        expr: increase(softswitch_engine_cdr_expired_total[1h]) > 0
+        labels: { severity: warning }
+        annotations:
+          summary: "Calls ended without the engine hearing of it"
+          description: "Their state expired with no end reported, so they were recorded with no talk time (answered: 200, ended at the answer; otherwise 408) and nothing was charged for them (ADR-0029). The SIP core restarted, or could not reach the engine when the calls ended; each is in the engine's log."
+
+      - alert: CallRecordsDropped
+        expr: increase(softswitch_rater_records_total{result="dropped"}[15m]) > 0
+        labels: { severity: critical }
+        annotations:
+          summary: "The rater threw call records away"
+          description: "A record was unreadable or refused for good. Each one is in the rater's log with its content; it was not charged."
+
+      - alert: ReportsFallingBehind
+        expr: softswitch_export_queue_pending > 100000 or increase(softswitch_export_errors_total[15m]) > 5
+        for: 15m
+        labels: { severity: warning }
+        annotations:
+          summary: "Call records are not reaching ClickHouse"
+          description: "Reports show less than what happened until the copy catches up. Nothing is lost: the records are in PostgreSQL."
+
+      - alert: VendorUnreachable
+        expr: softswitch_engine_vendors_unreachable > 0
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $value }} vendor connection(s) get no calls: no answer to the engine's OPTIONS"
+          description: "The connection is asked whether it is there (its options_interval_sec is set) and has not answered for five minutes. Calls go to the other routes, or fail where there is none. GET /v1/peers on the engine and the vendor's page in the panel name the connection; test it from the panel. If the vendor never answers OPTIONS, turn the check off on that connection."
+
+      - alert: VendorRegistrationFailing
+        expr: softswitch_engine_vendor_registrations{state="failing"} > 0
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $value }} vendor registration(s) failing"
+          description: "The switch registers with these vendors (the connection's register setting) and the last attempts failed: no answer, the password refused, or another refusal. Such a vendor may turn the switch's calls away. GET /v1/peers on the engine (registrations) and the vendor's page in the panel (column Kayıt) name the connection and the reason; check the sign-in name and password. The SIP core tries again every REG_RETRY_SEC seconds."
+
+      - alert: VendorCertificateRefused
+        expr: softswitch_engine_peers_refused > 0
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "{{ $value }} TLS vendor connection(s) get no calls: certificate refused"
+          description: "The certificate is not made out to the vendor's name, is not signed by a trusted authority, or has expired. Calls go to the other routes, or fail where there is none. The engine's log and GET /v1/stats name the connection and the reason; set the expected name on the connection if the vendor is reached by address."
+
+      - alert: SIPCertificateExpiring
+        expr: softswitch_sip_cert_expires_seconds < 14 * 86400
+        for: 1h
+        labels: { severity: warning }
+        annotations:
+          summary: "The SIP certificate expires in {{ $value | humanizeDuration }}"
+          description: "Callers and vendors that check it will refuse TLS once it has expired. With SIP_DOMAIN set it should have been renewed by now: see the caddy and sip-cert services' logs."
+
+      - alert: ArchivedRecordsMissing
+        expr: increase(softswitch_archive_missing_total[1h]) > 0 or increase(softswitch_archive_errors_total[6h]) > 3
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "Old call records are not where the archive expects them"
+          description: "Records due to leave PostgreSQL were not found in ClickHouse (they were kept and queued for export again), or archive passes keep failing. Nothing is lost; the rater's log says which. Check that the export is running and ClickHouse is whole."
+
+      - alert: ExchangeRatesNotFetched
+        expr: increase(softswitch_fx_fetch_failures_total[1d]) > 0 or softswitch_fx_fetch_age_seconds > 2 * 86400
+        labels: { severity: warning }
+        annotations:
+          summary: "The published rates of exchange could not be fetched"
+          description: "FX_SOURCE is on, but the last fetch failed or none has succeeded for two days. The last rates stay in use (calls and records are not affected); vendor comparison and reports use them until a fetch succeeds. The rates card in the panel's settings and the API's log say why; usually the API cannot reach the bank over HTTPS."
+
+      - alert: CallTracesDropped
+        expr: increase(softswitch_trace_dropped_total{reason!="unreadable"}[10m]) > 0 or increase(softswitch_trace_store_errors_total[10m]) > 3
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "Call traces are being lost"
+          description: "The trace collector cannot write the signalling it receives to ClickHouse fast enough, or at all; the traces of some calls will be missing or incomplete. Calls and call records are not affected. See the trace-collector's log and ClickHouse's disk."
+
+      - alert: MailNotGoingOut
+        expr: softswitch_mail_outbox_oldest_seconds > 900
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "An e-mail has waited more than fifteen minutes"
+          description: "Password resets and balance warnings are not reaching people. The API's log shows the mail server's answer."
+
+      - alert: APIErrors
+        expr: >
+          sum(rate(softswitch_api_requests_total{class="5xx"}[5m]))
+          / sum(rate(softswitch_api_requests_total[5m])) > 0.05
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "The management API fails more than one request in twenty"
+          description: "The panel is affected; calls are not. The API's log has the errors."
+
+      - alert: DiskAlmostFull
+        expr: node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs"} / node_filesystem_size_bytes < 0.15
+        for: 10m
+        labels: { severity: critical }
+        annotations:
+          summary: "Less than 15% of {{ $labels.mountpoint }} is free"
+          description: "A full disk stops the database, and with it call records and balance updates."

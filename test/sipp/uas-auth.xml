@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="ISO-8859-1" ?>
+<!-- SPDX-License-Identifier: AGPL-3.0-only -->
+<!DOCTYPE scenario SYSTEM "sipp.dtd">
+<!-- A vendor that asks callers to sign in (401 or 407, with one or more
+     challenge headers) and takes the call only with the user name and
+     password test/sipp/connlab.sh puts here; anything else is refused with
+     403. The second INVITE must come with a higher CSeq, and so must the ACK.
+     SIPp checks a password only in an Authorization header (the answer to
+     401): there the check is its verifyauth (MD5 and SHA-256, with or
+     without qop); for 407 it is a look at the name and realm in
+     Proxy-Authorization. The answer must also have the shape connlab.sh asks
+     for (qop, nc, cnonce, algorithm), and it is written to the log so that
+     connlab.sh can work the digest out again on its own. -->
+<scenario name="uas-auth">
+  <recv request="INVITE" crlf="true" />
+  <send>
+    <![CDATA[
+      SIP/2.0 __CODE__ Sign In
+      [last_Via:]
+      [last_From:]
+      [last_To:];tag=[pid]SIPpTag00[call_number]
+      [last_Call-ID:]
+      [last_CSeq:]
+      __CHALLENGE__
+      Content-Length: 0
+    ]]>
+  </send>
+  <recv request="ACK" />
+  <!-- A caller that has nothing to sign in with does not come back. -->
+  <recv request="INVITE" timeout="4000" crlf="true">
+    <action>
+      __VERIFY__
+      <ereg regexp="__SHAPE__" search_in="hdr" header="__ANSWER__:" assign_to="shaped" />
+      <ereg regexp=".*" search_in="hdr" header="__ANSWER__:" assign_to="answer" />
+      <log message="answer: [$answer]" />
+      <ereg regexp="^ *2 INVITE" search_in="hdr" header="CSeq:" assign_to="next" />
+    </action>
+  </recv>
+  <nop test="signed" next="shape" />
+  <nop next="refuse" />
+  <label id="shape" />
+  <nop test="shaped" next="counted" />
+  <nop next="refuse" />
+  <label id="counted" />
+  <nop test="next" next="accept" />
+
+  <label id="refuse" />
+  <send>
+    <![CDATA[
+      SIP/2.0 403 Forbidden
+      [last_Via:]
+      [last_From:]
+      [last_To:];tag=[pid]SIPpTag01[call_number]
+      [last_Call-ID:]
+      [last_CSeq:]
+      Content-Length: 0
+    ]]>
+  </send>
+  <recv request="ACK" />
+  <!-- A refusal is this scenario failing: nothing more will come. -->
+  <recv request="INFO" timeout="300" />
+
+  <label id="accept" />
+  <send retrans="500">
+    <![CDATA[
+      SIP/2.0 200 OK
+      [last_Via:]
+      [last_From:]
+      [last_To:];tag=[pid]SIPpTag01[call_number]
+      [last_Call-ID:]
+      [last_CSeq:]
+      Contact: <sip:[local_ip]:[local_port];transport=[transport]>
+      Content-Type: application/sdp
+      Content-Length: [len]
+
+      v=0
+      o=user1 53655765 2353687637 IN IP[local_ip_type] [local_ip]
+      s=-
+      c=IN IP[media_ip_type] [media_ip]
+      t=0 0
+      m=audio [media_port] RTP/AVP 8
+      a=rtpmap:8 PCMA/8000
+    ]]>
+  </send>
+  <recv request="ACK" crlf="true">
+    <action>
+      <ereg regexp="^ *2 ACK" search_in="hdr" header="CSeq:" check_it="true" assign_to="acked" />
+    </action>
+  </recv>
+  <Reference variables="acked" />
+  <recv request="BYE" />
+  <send>
+    <![CDATA[
+      SIP/2.0 200 OK
+      [last_Via:]
+      [last_From:]
+      [last_To:]
+      [last_Call-ID:]
+      [last_CSeq:]
+      Content-Length: 0
+    ]]>
+  </send>
+</scenario>

@@ -1,0 +1,229 @@
+<?xml version="1.0" encoding="ISO-8859-1" ?>
+<!-- SPDX-License-Identifier: AGPL-3.0-only -->
+<!DOCTYPE scenario SYSTEM "sipp.dtd">
+<!-- A vendor for the scenarios about offers made in an answer (T-43,
+     ADR-0043; RFC 3261 13.2.1, 14.1; RFC 3264 5-6). Run with -rtp_echo, it
+     sends back the audio it gets. An INVITE without an offer gets one in the
+     200: PCMU, PCMA and key presses. Then:
+       __ACK__   "answer": the ACK must carry the answer through the media
+                 relay (its address), PCMA and no PCMU;
+                 "bare": the ACK must carry no SDP.
+     An INVITE with an offer (through the relay) is answered with PCMA.
+     Then it follows a plan:
+       __PLAN__  "take": waits for a BYE, from the caller or the switch.
+                 "reoffer": takes a new INVITE without an offer from the
+                 caller, makes the offer in its 200 (PCMU, PCMA) and checks
+                 the answer in the ACK as above; half a second later sends
+                 a new INVITE without an offer of its own, checks the
+                 offer in the 200 (relayed, PCMA, no PCMU, the CSeq of its
+                 own request) and answers it in its ACK; then waits for the
+                 caller's BYE.
+     A message that is not as expected ends this scenario with an error. -->
+<scenario name="uas-late">
+  <recv request="INVITE" crlf="true" rrs="true">
+    <action>
+      <ereg regexp="m=audio" search_in="body" assign_to="offered" />
+      <ereg regexp="c=IN IP4 172\.30\.0\.11" search_in="body" assign_to="relayed" />
+      <ereg regexp=".*" search_in="hdr" header="From:" assign_to="from" />
+      <ereg regexp=".*" search_in="hdr" header="To:" assign_to="to" />
+    </action>
+  </recv>
+  <nop test="offered" next="early" />
+
+  <!-- No offer: this vendor makes one. -->
+  <send retrans="500">
+    <![CDATA[
+      SIP/2.0 200 OK
+      [last_Via:]
+      [last_From:]
+      [last_To:];tag=[pid]SIPpTag01[call_number]
+      [last_Call-ID:]
+      [last_CSeq:]
+      Contact: <sip:[local_ip]:[local_port];transport=[transport]>
+      Content-Type: application/sdp
+      Content-Length: [len]
+
+      v=0
+      o=vendor 4343 1 IN IP[local_ip_type] [local_ip]
+      s=-
+      c=IN IP[media_ip_type] [media_ip]
+      t=0 0
+      m=audio [media_port] RTP/AVP 0 8 101
+      a=rtpmap:0 PCMU/8000
+      a=rtpmap:8 PCMA/8000
+      a=rtpmap:101 telephone-event/8000
+    ]]>
+  </send>
+  <recv request="ACK" crlf="true">
+    <action>
+      <ereg regexp="m=audio" search_in="body" assign_to="answered" />
+      <ereg regexp="c=IN IP4 172\.30\.0\.11" search_in="body" assign_to="arelayed" />
+      <ereg regexp="m=audio [0-9]+ RTP/AVP 8([^0-9]|$)" search_in="body" assign_to="apcma" />
+      <ereg regexp="PCMU" search_in="body" assign_to="apcmu" />
+    </action>
+  </recv>
+  <nop next="ack___ACK__" />
+  <label id="ack_answer" />
+  <nop test="apcmu" next="bad" />
+  <nop test="arelayed" next="a1" />
+  <nop next="bad" />
+  <label id="a1" />
+  <nop test="apcma" next="__PLAN__" />
+  <nop next="bad" />
+  <label id="ack_bare" />
+  <nop test="answered" next="bad" />
+  <nop next="__PLAN__" />
+
+  <!-- An offer: answered as usual. -->
+  <label id="early" />
+  <nop test="relayed" next="e1" />
+  <nop next="bad" />
+  <label id="e1" />
+  <send retrans="500">
+    <![CDATA[
+      SIP/2.0 200 OK
+      [last_Via:]
+      [last_From:]
+      [last_To:];tag=[pid]SIPpTag01[call_number]
+      [last_Call-ID:]
+      [last_CSeq:]
+      Contact: <sip:[local_ip]:[local_port];transport=[transport]>
+      Content-Type: application/sdp
+      Content-Length: [len]
+
+      v=0
+      o=vendor 4343 1 IN IP[local_ip_type] [local_ip]
+      s=-
+      c=IN IP[media_ip_type] [media_ip]
+      t=0 0
+      m=audio [media_port] RTP/AVP 8 101
+      a=rtpmap:8 PCMA/8000
+      a=rtpmap:101 telephone-event/8000
+    ]]>
+  </send>
+  <recv request="ACK" crlf="true" />
+  <nop next="__PLAN__" />
+
+  <!-- reoffer -->
+  <label id="reoffer" />
+  <!-- 1. The caller's new INVITE without an offer: this vendor makes one. -->
+  <recv request="INVITE">
+    <action>
+      <ereg regexp="m=audio" search_in="body" assign_to="offered1" />
+    </action>
+  </recv>
+  <nop test="offered1" next="bad" />
+  <send retrans="500">
+    <![CDATA[
+      SIP/2.0 200 OK
+      [last_Via:]
+      [last_From:]
+      [last_To:]
+      [last_Call-ID:]
+      [last_CSeq:]
+      Contact: <sip:[local_ip]:[local_port];transport=[transport]>
+      Content-Type: application/sdp
+      Content-Length: [len]
+
+      v=0
+      o=vendor 4343 2 IN IP[local_ip_type] [local_ip]
+      s=-
+      c=IN IP[media_ip_type] [media_ip]
+      t=0 0
+      m=audio [media_port] RTP/AVP 0 8 101
+      a=rtpmap:0 PCMU/8000
+      a=rtpmap:8 PCMA/8000
+      a=rtpmap:101 telephone-event/8000
+    ]]>
+  </send>
+  <recv request="ACK">
+    <action>
+      <ereg regexp="c=IN IP4 172\.30\.0\.11" search_in="body" assign_to="rrelayed" />
+      <ereg regexp="m=audio [0-9]+ RTP/AVP 8([^0-9]|$)" search_in="body" assign_to="rpcma" />
+      <ereg regexp="PCMU" search_in="body" assign_to="rpcmu" />
+    </action>
+  </recv>
+  <nop test="rpcmu" next="bad" />
+  <nop test="rrelayed" next="r1" />
+  <nop next="bad" />
+  <label id="r1" />
+  <nop test="rpcma" next="r2" />
+  <nop next="bad" />
+  <label id="r2" />
+  <!-- 2. A new INVITE of this vendor's, without an offer. -->
+  <pause milliseconds="500" />
+  <send retrans="500">
+    <![CDATA[
+      INVITE [next_url] SIP/2.0
+      Via: SIP/2.0/[transport] [local_ip]:[local_port];branch=z9hG4bK-[pid]-[call_number]-v1
+      From:[$to];tag=[pid]SIPpTag01[call_number]
+      To:[$from]
+      Call-ID: [call_id]
+      CSeq: 1 INVITE
+      Contact: <sip:[local_ip]:[local_port];transport=[transport]>
+      Max-Forwards: 70
+      Content-Length: 0
+    ]]>
+  </send>
+  <recv response="100" optional="true" />
+  <recv response="200">
+    <action>
+      <ereg regexp="^ *1 INVITE" search_in="hdr" header="CSeq:" assign_to="vcseq" />
+      <ereg regexp="c=IN IP4 172\.30\.0\.11" search_in="body" assign_to="vrelayed" />
+      <ereg regexp="m=audio [0-9]+ RTP/AVP 8([^0-9]|$)" search_in="body" assign_to="vpcma" />
+      <ereg regexp="PCMU" search_in="body" assign_to="vpcmu" />
+    </action>
+  </recv>
+  <send>
+    <![CDATA[
+      ACK [next_url] SIP/2.0
+      Via: SIP/2.0/[transport] [local_ip]:[local_port];branch=z9hG4bK-[pid]-[call_number]-v1ack
+      From:[$to];tag=[pid]SIPpTag01[call_number]
+      To:[$from]
+      Call-ID: [call_id]
+      CSeq: 1 ACK
+      Max-Forwards: 70
+      Content-Type: application/sdp
+      Content-Length: [len]
+
+      v=0
+      o=vendor 4343 3 IN IP[local_ip_type] [local_ip]
+      s=-
+      c=IN IP[media_ip_type] [media_ip]
+      t=0 0
+      m=audio [media_port] RTP/AVP 8 101
+      a=rtpmap:8 PCMA/8000
+      a=rtpmap:101 telephone-event/8000
+    ]]>
+  </send>
+  <nop test="vpcmu" next="bad" />
+  <nop test="vcseq" next="v1" />
+  <nop next="bad" />
+  <label id="v1" />
+  <nop test="vrelayed" next="v2" />
+  <nop next="bad" />
+  <label id="v2" />
+  <nop test="vpcma" next="take" />
+  <nop next="bad" />
+
+  <label id="bad" />
+  <nop><action><error message="the call was not as expected" /></action></nop>
+
+  <!-- take (and reoffer, from here). -->
+  <label id="take" />
+  <recv request="BYE" />
+  <send>
+    <![CDATA[
+      SIP/2.0 200 OK
+      [last_Via:]
+      [last_From:]
+      [last_To:]
+      [last_Call-ID:]
+      [last_CSeq:]
+      Contact: <sip:[local_ip]:[local_port];transport=[transport]>
+      Content-Length: 0
+    ]]>
+  </send>
+  <Reference variables="offered,relayed,from,to,answered,arelayed,apcma,apcmu,offered1,rrelayed,rpcma,rpcmu,vcseq,vrelayed,vpcma,vpcmu" />
+  <timewait milliseconds="2000" />
+</scenario>

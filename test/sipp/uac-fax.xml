@@ -1,0 +1,382 @@
+<?xml version="1.0" encoding="ISO-8859-1" ?>
+<!-- SPDX-License-Identifier: AGPL-3.0-only -->
+<!DOCTYPE scenario SYSTEM "sipp.dtd">
+<!-- A caller for the scenarios about fax and key presses (ADR-0031): a new
+     offer of T.38 (m=image udptl t38, ITU-T T.38 annex D; RFC 3264 8)
+     passes the media relay as it is, either way, and so does the way back
+     to audio; key presses sent as SIP INFO (RFC 6086) pass unchanged; the
+     switch converts nothing. It offers PCMU, PCMA and key presses. Then:
+       __PLAN__  "full": the counterpart of uas-fax.xml's "full". It turns
+                 the call into a fax (T.38) and checks the answer; sends a
+                 key press as INFO; takes one from the vendor, unchanged;
+                 takes the vendor's offer back to audio (it must carry the
+                 connection's codecs only: PCMA and key presses) and the
+                 vendor's own offer of T.38; offers audio again. Every offer
+                 and answer must name the media relay. Hangs up after the
+                 pause (-d).
+                 "keep": turns the call into a fax half a second after the
+                 answer and plays __FAX__ (UDPTL datagrams, no audio at any
+                 time) for the pause (-d), then hangs up: the media relay
+                 must count fax datagrams as media and not end the call as
+                 a dead one (ADR-0027) once its timeout has passed.
+     SIPp takes any answer of the code it waits for, so the answers to
+     requests within the call are checked for their CSeq. -->
+<scenario name="uac-fax">
+  <send retrans="500">
+    <![CDATA[
+      INVITE sip:[service]@[remote_ip]:[remote_port] SIP/2.0
+      Via: SIP/2.0/[transport] [local_ip]:[local_port];branch=z9hG4bK-[pid]-[call_number]-inv
+      From: sipp <sip:sipp@[local_ip]:[local_port]>;tag=[pid]SIPpTag00[call_number]
+      To: [service] <sip:[service]@[remote_ip]:[remote_port]>
+      Call-ID: [call_id]
+      CSeq: 1 INVITE
+      Contact: <sip:sipp@[local_ip]:[local_port]>
+      Max-Forwards: 70
+      Content-Type: application/sdp
+      Content-Length: [len]
+
+      v=0
+      o=user1 53655765 2353687637 IN IP[local_ip_type] [local_ip]
+      s=-
+      c=IN IP[media_ip_type] [media_ip]
+      t=0 0
+      m=audio [media_port] RTP/AVP 0 8 101
+      a=rtpmap:0 PCMU/8000
+      a=rtpmap:8 PCMA/8000
+      a=rtpmap:101 telephone-event/8000
+    ]]>
+  </send>
+
+  <recv response="100" optional="true" />
+  <recv response="180" optional="true" />
+  <recv response="183" optional="true" />
+  <recv response="200" rtd="true" rrs="true">
+    <action>
+      <ereg regexp="c=IN IP4 172\.30\.0\.11" search_in="body" assign_to="relayed0" />
+    </action>
+  </recv>
+  <send>
+    <![CDATA[
+      ACK [next_url] SIP/2.0
+      Via: SIP/2.0/[transport] [local_ip]:[local_port];branch=z9hG4bK-[pid]-[call_number]-ack
+      [routes]
+      From: sipp <sip:sipp@[local_ip]:[local_port]>;tag=[pid]SIPpTag00[call_number]
+      To: [service] <sip:[service]@[remote_ip]:[remote_port]>[peer_tag_param]
+      Call-ID: [call_id]
+      CSeq: 1 ACK
+      Max-Forwards: 70
+      Content-Length: 0
+    ]]>
+  </send>
+  <nop test="relayed0" next="answered" />
+  <nop next="bad" />
+  <label id="answered" />
+  <pause milliseconds="__START__" />
+
+  <!-- 1. The caller turns the call into a fax. -->
+  <send retrans="500">
+    <![CDATA[
+      INVITE [next_url] SIP/2.0
+      Via: SIP/2.0/[transport] [local_ip]:[local_port];branch=z9hG4bK-[pid]-[call_number]-f1
+      [routes]
+      From: sipp <sip:sipp@[local_ip]:[local_port]>;tag=[pid]SIPpTag00[call_number]
+      To: [service] <sip:[service]@[remote_ip]:[remote_port]>[peer_tag_param]
+      Call-ID: [call_id]
+      CSeq: 2 INVITE
+      Contact: <sip:sipp@[local_ip]:[local_port]>
+      Max-Forwards: 70
+      Content-Type: application/sdp
+      Content-Length: [len]
+
+      v=0
+      o=user1 53655765 2353687638 IN IP[local_ip_type] [local_ip]
+      s=-
+      c=IN IP[media_ip_type] [media_ip]
+      t=0 0
+      m=image [media_port] udptl t38
+      a=T38FaxVersion:0
+      a=T38MaxBitRate:14400
+      a=T38FaxRateManagement:transferredTCF
+      a=T38FaxMaxBuffer:262
+      a=T38FaxMaxDatagram:176
+      a=T38FaxUdpEC:t38UDPRedundancy
+    ]]>
+  </send>
+  <recv response="100" optional="true" />
+  <recv response="200">
+    <action>
+      <ereg regexp="^ *2 INVITE" search_in="hdr" header="CSeq:" assign_to="cseq1" />
+      <ereg regexp="c=IN IP4 172\.30\.0\.11" search_in="body" assign_to="relayed1" />
+      <ereg regexp="m=image [1-9][0-9]* udptl t38" search_in="body" assign_to="fax1" />
+      <ereg regexp="a=T38FaxUdpEC:t38UDPRedundancy" search_in="body" assign_to="ec1" />
+      <ereg regexp="m=audio [1-9]|a=rtpmap" search_in="body" assign_to="audio1" />
+    </action>
+  </recv>
+  <send>
+    <![CDATA[
+      ACK [next_url] SIP/2.0
+      Via: SIP/2.0/[transport] [local_ip]:[local_port];branch=z9hG4bK-[pid]-[call_number]-f1ack
+      [routes]
+      From: sipp <sip:sipp@[local_ip]:[local_port]>;tag=[pid]SIPpTag00[call_number]
+      To: [service] <sip:[service]@[remote_ip]:[remote_port]>[peer_tag_param]
+      Call-ID: [call_id]
+      CSeq: 2 ACK
+      Max-Forwards: 70
+      Content-Length: 0
+    ]]>
+  </send>
+  <nop test="audio1" next="bad" />
+  <nop test="cseq1" next="a1" />
+  <nop next="bad" />
+  <label id="a1" />
+  <nop test="relayed1" next="a2" />
+  <nop next="bad" />
+  <label id="a2" />
+  <nop test="fax1" next="a3" />
+  <nop next="bad" />
+  <label id="a3" />
+  <nop test="ec1" next="__PLAN__" />
+  <nop next="bad" />
+
+  <!-- keep -->
+  <label id="keep" />
+  <nop><action><exec play_pcap_image="__FAX__" /></action></nop>
+  <nop next="hangup" />
+
+  <!-- full -->
+  <label id="full" />
+  <!-- 2. A key press as INFO, from the caller. (The pauses before the
+       caller's own requests: SIPp takes a request that arrives while the
+       vendor is still between its own steps for an unexpected one.) -->
+  <pause milliseconds="200" />
+  <send retrans="500">
+    <![CDATA[
+      INFO [next_url] SIP/2.0
+      Via: SIP/2.0/[transport] [local_ip]:[local_port];branch=z9hG4bK-[pid]-[call_number]-i1
+      [routes]
+      From: sipp <sip:sipp@[local_ip]:[local_port]>;tag=[pid]SIPpTag00[call_number]
+      To: [service] <sip:[service]@[remote_ip]:[remote_port]>[peer_tag_param]
+      Call-ID: [call_id]
+      CSeq: 3 INFO
+      Max-Forwards: 70
+      Content-Type: application/dtmf-relay
+      Content-Length: [len]
+
+      Signal=5
+      Duration=160
+    ]]>
+  </send>
+  <recv response="200">
+    <action>
+      <ereg regexp="^ *3 INFO" search_in="hdr" header="CSeq:" assign_to="cseq2" />
+    </action>
+  </recv>
+  <nop test="cseq2" next="b1" />
+  <nop next="bad" />
+  <label id="b1" />
+
+  <!-- 3. A key press as INFO, from the vendor: unchanged. -->
+  <recv request="INFO" timeout="10000" ontimeout="bad">
+    <action>
+      <ereg regexp="application/dtmf-relay" search_in="hdr" header="Content-Type:" assign_to="type3" />
+      <ereg regexp="Signal=9\r?\nDuration=250" search_in="body" assign_to="key3" />
+    </action>
+  </recv>
+  <send>
+    <![CDATA[
+      SIP/2.0 200 OK
+      [last_Via:]
+      [last_From:]
+      [last_To:]
+      [last_Call-ID:]
+      [last_CSeq:]
+      Content-Length: 0
+    ]]>
+  </send>
+  <nop test="type3" next="b2" />
+  <nop next="bad" />
+  <label id="b2" />
+  <nop test="key3" next="b3" />
+  <nop next="bad" />
+  <label id="b3" />
+
+  <!-- 4. The vendor goes back to audio. -->
+  <recv request="INVITE" timeout="10000" ontimeout="bad">
+    <action>
+      <ereg regexp="c=IN IP4 172\.30\.0\.11" search_in="body" assign_to="relayed4" />
+      <ereg regexp="m=audio [1-9][0-9]* RTP/AVP 8 101" search_in="body" assign_to="listed4" />
+      <ereg regexp="PCMU|m=image [1-9]" search_in="body" assign_to="unlisted4" />
+    </action>
+  </recv>
+  <nop test="unlisted4" next="refuse" />
+  <nop test="relayed4" next="b4" />
+  <nop next="refuse" />
+  <label id="b4" />
+  <nop test="listed4" next="b5" />
+  <nop next="refuse" />
+  <label id="b5" />
+  <send retrans="500">
+    <![CDATA[
+      SIP/2.0 200 OK
+      [last_Via:]
+      [last_From:]
+      [last_To:]
+      [last_Call-ID:]
+      [last_CSeq:]
+      Contact: <sip:sipp@[local_ip]:[local_port]>
+      Content-Type: application/sdp
+      Content-Length: [len]
+
+      v=0
+      o=user1 53655765 2353687639 IN IP[local_ip_type] [local_ip]
+      s=-
+      c=IN IP[media_ip_type] [media_ip]
+      t=0 0
+      m=audio [media_port] RTP/AVP 8 101
+      a=rtpmap:8 PCMA/8000
+      a=rtpmap:101 telephone-event/8000
+    ]]>
+  </send>
+  <recv request="ACK" />
+
+  <!-- 5. The vendor turns the call into a fax. -->
+  <recv request="INVITE" timeout="10000" ontimeout="bad">
+    <action>
+      <ereg regexp="c=IN IP4 172\.30\.0\.11" search_in="body" assign_to="relayed5" />
+      <ereg regexp="m=image [1-9][0-9]* udptl t38" search_in="body" assign_to="fax5" />
+      <ereg regexp="a=T38FaxRateManagement:transferredTCF" search_in="body" assign_to="tcf5" />
+      <ereg regexp="m=audio [1-9]|a=rtpmap" search_in="body" assign_to="audio5" />
+    </action>
+  </recv>
+  <nop test="audio5" next="refuse" />
+  <nop test="relayed5" next="b6" />
+  <nop next="refuse" />
+  <label id="b6" />
+  <nop test="fax5" next="b7" />
+  <nop next="refuse" />
+  <label id="b7" />
+  <nop test="tcf5" next="b8" />
+  <nop next="refuse" />
+  <label id="b8" />
+  <send retrans="500">
+    <![CDATA[
+      SIP/2.0 200 OK
+      [last_Via:]
+      [last_From:]
+      [last_To:]
+      [last_Call-ID:]
+      [last_CSeq:]
+      Contact: <sip:sipp@[local_ip]:[local_port]>
+      Content-Type: application/sdp
+      Content-Length: [len]
+
+      v=0
+      o=user1 53655765 2353687640 IN IP[local_ip_type] [local_ip]
+      s=-
+      c=IN IP[media_ip_type] [media_ip]
+      t=0 0
+      m=image [media_port] udptl t38
+      a=T38FaxVersion:0
+      a=T38MaxBitRate:14400
+      a=T38FaxRateManagement:transferredTCF
+      a=T38FaxMaxBuffer:262
+      a=T38FaxMaxDatagram:176
+      a=T38FaxUdpEC:t38UDPRedundancy
+    ]]>
+  </send>
+  <recv request="ACK" />
+
+  <!-- 6. The caller goes back to audio. -->
+  <pause milliseconds="200" />
+  <send retrans="500">
+    <![CDATA[
+      INVITE [next_url] SIP/2.0
+      Via: SIP/2.0/[transport] [local_ip]:[local_port];branch=z9hG4bK-[pid]-[call_number]-f6
+      [routes]
+      From: sipp <sip:sipp@[local_ip]:[local_port]>;tag=[pid]SIPpTag00[call_number]
+      To: [service] <sip:[service]@[remote_ip]:[remote_port]>[peer_tag_param]
+      Call-ID: [call_id]
+      CSeq: 4 INVITE
+      Contact: <sip:sipp@[local_ip]:[local_port]>
+      Max-Forwards: 70
+      Content-Type: application/sdp
+      Content-Length: [len]
+
+      v=0
+      o=user1 53655765 2353687641 IN IP[local_ip_type] [local_ip]
+      s=-
+      c=IN IP[media_ip_type] [media_ip]
+      t=0 0
+      m=audio [media_port] RTP/AVP 0 8 101
+      a=rtpmap:0 PCMU/8000
+      a=rtpmap:8 PCMA/8000
+      a=rtpmap:101 telephone-event/8000
+    ]]>
+  </send>
+  <recv response="100" optional="true" />
+  <recv response="200">
+    <action>
+      <ereg regexp="^ *4 INVITE" search_in="hdr" header="CSeq:" assign_to="cseq6" />
+      <ereg regexp="c=IN IP4 172\.30\.0\.11" search_in="body" assign_to="relayed6" />
+      <ereg regexp="m=audio [1-9][0-9]* RTP/AVP 8 101" search_in="body" assign_to="audio6" />
+    </action>
+  </recv>
+  <send>
+    <![CDATA[
+      ACK [next_url] SIP/2.0
+      Via: SIP/2.0/[transport] [local_ip]:[local_port];branch=z9hG4bK-[pid]-[call_number]-f6ack
+      [routes]
+      From: sipp <sip:sipp@[local_ip]:[local_port]>;tag=[pid]SIPpTag00[call_number]
+      To: [service] <sip:[service]@[remote_ip]:[remote_port]>[peer_tag_param]
+      Call-ID: [call_id]
+      CSeq: 4 ACK
+      Max-Forwards: 70
+      Content-Length: 0
+    ]]>
+  </send>
+  <nop test="cseq6" next="b9" />
+  <nop next="bad" />
+  <label id="b9" />
+  <nop test="relayed6" next="b10" />
+  <nop next="bad" />
+  <label id="b10" />
+  <nop test="audio6" next="hangup" />
+  <nop next="bad" />
+
+  <label id="hangup" />
+  <pause />
+  <send retrans="500">
+    <![CDATA[
+      BYE [next_url] SIP/2.0
+      Via: SIP/2.0/[transport] [local_ip]:[local_port];branch=z9hG4bK-[pid]-[call_number]-bye
+      [routes]
+      From: sipp <sip:sipp@[local_ip]:[local_port]>;tag=[pid]SIPpTag00[call_number]
+      To: [service] <sip:[service]@[remote_ip]:[remote_port]>[peer_tag_param]
+      Call-ID: [call_id]
+      CSeq: 9 BYE
+      Max-Forwards: 70
+      Content-Length: 0
+    ]]>
+  </send>
+  <recv response="200" crlf="true" next="done" />
+
+  <!-- An offer from the vendor that is not as expected. -->
+  <label id="refuse" />
+  <send>
+    <![CDATA[
+      SIP/2.0 488 Not Acceptable Here
+      [last_Via:]
+      [last_From:]
+      [last_To:]
+      [last_Call-ID:]
+      [last_CSeq:]
+      Content-Length: 0
+    ]]>
+  </send>
+  <recv request="ACK" />
+
+  <label id="bad" />
+  <nop><action><error message="fax or key presses within the call were not as expected" /></action></nop>
+
+  <label id="done" />
+</scenario>

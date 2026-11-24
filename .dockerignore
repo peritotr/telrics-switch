@@ -1,0 +1,11 @@
+.git
+web
+docs
+test
+**/node_modules
+deploy/compose/certs
+deploy/prod/.env
+deploy/prod/certs
+deploy/prod/backups
+deploy/prod/.env.smoke
+deploy/prod/backups-smoke

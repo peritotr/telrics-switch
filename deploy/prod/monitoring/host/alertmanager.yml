@@ -1,0 +1,2 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+- targets: ["127.0.0.1:59093"]

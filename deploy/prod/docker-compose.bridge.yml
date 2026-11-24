@@ -1,0 +1,79 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Smoke test: the same images on a private Docker network with fixed
+# addresses, so the installation can be tried on a machine that is not the
+# production server (including Docker Desktop). Not for traffic.
+services:
+  opensips:
+    environment:
+      SIP_IP: 172.30.8.10
+      ENGINE_URL: http://172.30.8.40:58090
+      MI_SOCKET: 172.30.8.10:8899
+      RTP_CONTROL: 172.30.8.11:2223
+      SIP_METRICS: 172.30.8.10:8888
+      TRACE_TARGET: ${TRACE_TARGET-172.30.8.36:9060}
+      HEP_TARGET: ${HEP_TARGET:-}
+    networks: { default: { ipv4_address: 172.30.8.10 } }
+
+  rtpengine:
+    environment:
+      RTP_INTERFACE: 172.30.8.11
+      RTP_CONTROL: 172.30.8.11:2223
+      RTP_TEARDOWN_URL: http://172.30.8.10:8888/RPC2
+    networks: { default: { ipv4_address: 172.30.8.11 } }
+
+  route-engine:
+    environment:
+      DATABASE_URL: postgres://softswitch:${PG_PASSWORD:?}@postgres:5432/softswitch
+      REDIS_URL: redis://redis:6379/0
+      NATS_URL: nats://nats:4222
+      LISTEN: 0.0.0.0:58090
+      RELOAD_SEC: "5"
+      OPENSIPS_MI: 172.30.8.10:8899
+      TLS_CA_LIST: ${TLS_CA_LIST:-}
+      PEER_VERIFY: ${PEER_VERIFY:-on}
+      REG_MIN_EXPIRES: ${REG_MIN_EXPIRES:-60}
+      REG_MAX_EXPIRES: ${REG_MAX_EXPIRES:-3600}
+      REG_NAT_EXPIRES: ${REG_NAT_EXPIRES:-60}
+      SIP_TLS_ADDR: 172.30.8.10:5061
+    networks: { default: { ipv4_address: 172.30.8.40 } }
+
+  api:
+    environment:
+      LISTEN: 0.0.0.0:58080
+      METRICS_LISTEN: 0.0.0.0:58091
+      ENGINE_URL: http://172.30.8.40:58090
+      SYSTEM_SERVICES: "SIP çekirdeği (OpenSIPS)=http://172.30.8.10:8888/metrics, Medya (rtpengine)=http://172.30.8.11:2225/metrics, Ücretlendirme (rater)=http://rater:58092/metrics, Çağrı izi (trace-collector)=http://172.30.8.36:58093/metrics"
+    ports: ["127.0.0.1:${API_PORT:-58080}:58080"]
+
+  trace-collector:
+    environment:
+      CLICKHOUSE_URL: http://softswitch:${CLICKHOUSE_PASSWORD:?}@clickhouse:8123/softswitch
+      HEP_LISTEN: 172.30.8.36:9060
+      METRICS_LISTEN: 0.0.0.0:58093
+    networks: { default: { ipv4_address: 172.30.8.36 } }
+
+  caddy:
+    environment:
+      PANEL_DOMAIN: ${PANEL_DOMAIN:-localhost}
+      SIP_DOMAIN: ${SIP_DOMAIN:-${PANEL_DOMAIN:-localhost}}
+      API_UPSTREAM: api:58080
+    ports: ["127.0.0.1:${HTTPS_PORT:-58443}:443"]
+
+  prometheus:
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+    volumes:
+      - ./monitoring/bridge:/etc/prometheus/targets:ro
+    ports: ["127.0.0.1:${PROMETHEUS_PORT:-59090}:9090"]
+
+  alertmanager:
+    ports: ["127.0.0.1:${ALERTMANAGER_PORT:-59093}:9093"]
+
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: 172.30.8.0/24
+          # Addresses handed out by Docker stay clear of the fixed ones above.
+          ip_range: 172.30.8.128/25

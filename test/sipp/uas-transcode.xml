@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="ISO-8859-1" ?>
+<!-- SPDX-License-Identifier: AGPL-3.0-only -->
+<!DOCTYPE scenario SYSTEM "sipp.dtd">
+<!-- A vendor that speaks PCMU only, for the scenarios about codec
+     translation (transcoding, T-09); run with -rtp_echo, it sends back the
+     audio it gets. The offer must come through the media relay in PCMU and
+     key presses (telephone-event) only: a call from a caller that offered
+     PCMA alone. Otherwise it is refused with 488 and this scenario fails.
+       __PLAN__  "full": half a second after the ACK this vendor makes a new
+                 offer of its own, in PCMU; the answer must come back in
+                 PCMU through the relay. Then it waits for the BYE.
+                 "take": it waits for the BYE. -->
+<scenario name="uas-transcode">
+  <recv request="INVITE" crlf="true" rrs="true">
+    <action>
+      <ereg regexp="c=IN IP4 172\.30\.0\.11" search_in="body" assign_to="relayed" />
+      <ereg regexp="m=audio [0-9]+ RTP/AVP 0 101" search_in="body" assign_to="pcmu" />
+      <ereg regexp="a=rtpmap:101 telephone-event/8000" search_in="body" assign_to="keys" />
+      <ereg regexp="PCMA" search_in="body" assign_to="pcma" />
+      <ereg regexp=".*" search_in="hdr" header="From:" assign_to="from" />
+      <ereg regexp=".*" search_in="hdr" header="To:" assign_to="to" />
+    </action>
+  </recv>
+  <nop test="pcma" next="refuse" />
+  <nop test="relayed" next="c1" />
+  <nop next="refuse" />
+  <label id="c1" />
+  <nop test="pcmu" next="c2" />
+  <nop next="refuse" />
+  <label id="c2" />
+  <nop test="keys" next="accept" />
+
+  <label id="refuse" />
+  <send>
+    <![CDATA[
+      SIP/2.0 488 Not Acceptable Here
+      [last_Via:]
+      [last_From:]
+      [last_To:];tag=[pid]SIPpTag01[call_number]
+      [last_Call-ID:]
+      [last_CSeq:]
+      Content-Length: 0
+    ]]>
+  </send>
+  <recv request="ACK" />
+  <nop next="bad" />
+
+  <label id="accept" />
+  <send retrans="500">
+    <![CDATA[
+      SIP/2.0 200 OK
+      [last_Via:]
+      [last_From:]
+      [last_To:];tag=[pid]SIPpTag01[call_number]
+      [last_Call-ID:]
+      [last_CSeq:]
+      Contact: <sip:[local_ip]:[local_port];transport=[transport]>
+      Content-Type: application/sdp
+      Content-Length: [len]
+
+      v=0
+      o=vendor 4242 1 IN IP[local_ip_type] [local_ip]
+      s=-
+      c=IN IP[media_ip_type] [media_ip]
+      t=0 0
+      m=audio [media_port] RTP/AVP 0 101
+      a=rtpmap:0 PCMU/8000
+      a=rtpmap:101 telephone-event/8000
+    ]]>
+  </send>
+  <recv request="ACK" crlf="true" />
+  <nop next="__PLAN__" />
+
+  <!-- full: a new offer of this vendor's, in PCMU. -->
+  <label id="full" />
+  <pause milliseconds="500" />
+  <send retrans="500">
+    <![CDATA[
+      INVITE [next_url] SIP/2.0
+      Via: SIP/2.0/[transport] [local_ip]:[local_port];branch=z9hG4bK-[pid]-[call_number]-v1
+      From:[$to];tag=[pid]SIPpTag01[call_number]
+      To:[$from]
+      Call-ID: [call_id]
+      CSeq: 1 INVITE
+      Contact: <sip:[local_ip]:[local_port];transport=[transport]>
+      Max-Forwards: 70
+      Content-Type: application/sdp
+      Content-Length: [len]
+
+      v=0
+      o=vendor 4242 2 IN IP[local_ip_type] [local_ip]
+      s=-
+      c=IN IP[media_ip_type] [media_ip]
+      t=0 0
+      m=audio [media_port] RTP/AVP 0 101
+      a=rtpmap:0 PCMU/8000
+      a=rtpmap:101 telephone-event/8000
+    ]]>
+  </send>
+  <recv response="100" optional="true" />
+  <recv response="200">
+    <action>
+      <ereg regexp="c=IN IP4 172\.30\.0\.11" search_in="body" assign_to="relayed2" />
+      <ereg regexp="m=audio [0-9]+ RTP/AVP 0([^0-9]|$)" search_in="body" assign_to="pcmu2" />
+      <ereg regexp="PCMA" search_in="body" assign_to="pcma2" />
+    </action>
+  </recv>
+  <send>
+    <![CDATA[
+      ACK [next_url] SIP/2.0
+      Via: SIP/2.0/[transport] [local_ip]:[local_port];branch=z9hG4bK-[pid]-[call_number]-v1ack
+      From:[$to];tag=[pid]SIPpTag01[call_number]
+      To:[$from]
+      Call-ID: [call_id]
+      CSeq: 1 ACK
+      Max-Forwards: 70
+      Content-Length: 0
+    ]]>
+  </send>
+  <nop test="pcma2" next="bad" />
+  <nop test="relayed2" next="f1" />
+  <nop next="bad" />
+  <label id="f1" />
+  <nop test="pcmu2" next="take" />
+  <nop next="bad" />
+
+  <label id="bad" />
+  <nop><action><error message="the call was not as expected" /></action></nop>
+
+  <!-- take (and full, from here): the caller hangs up. -->
+  <label id="take" />
+  <recv request="BYE" />
+  <send>
+    <![CDATA[
+      SIP/2.0 200 OK
+      [last_Via:]
+      [last_From:]
+      [last_To:]
+      [last_Call-ID:]
+      [last_CSeq:]
+      Contact: <sip:[local_ip]:[local_port];transport=[transport]>
+      Content-Length: 0
+    ]]>
+  </send>
+  <Reference variables="relayed,pcmu,keys,pcma,from,to,relayed2,pcmu2,pcma2" />
+  <timewait milliseconds="2000" />
+</scenario>

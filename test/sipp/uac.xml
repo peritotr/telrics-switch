@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="ISO-8859-1" ?>
+<!-- SPDX-License-Identifier: AGPL-3.0-only -->
+<!DOCTYPE scenario SYSTEM "sipp.dtd">
+<!-- Basic caller that honours Record-Route (the built-in uac scenario does not).
+     The INVITE's replies are matched to its transaction (start_txn,
+     response_txn, ack_txn): a provisional reply that arrives after the 200
+     (UDP does not keep order; the SIP core may send a 180 it had decided to
+     forward just after the 200, T-29) is then ignored, as RFC 3261 wants of
+     a reply to a finished transaction, instead of making SIPp abort the
+     call as an unexpected message; a repeated 200 is acknowledged again. -->
+<scenario name="uac-record-route">
+  <send retrans="500" start_txn="invite">
+    <![CDATA[
+      INVITE sip:[service]@[remote_ip]:[remote_port] SIP/2.0
+      Via: SIP/2.0/[transport] [local_ip]:[local_port];branch=[branch]
+      From: sipp <sip:sipp@[local_ip]:[local_port]>;tag=[pid]SIPpTag00[call_number]
+      To: [service] <sip:[service]@[remote_ip]:[remote_port]>
+      Call-ID: [call_id]
+      CSeq: 1 INVITE
+      Contact: <sip:sipp@[local_ip]:[local_port]>
+      Max-Forwards: 70
+      Content-Type: application/sdp
+      Content-Length: [len]
+
+      v=0
+      o=user1 53655765 2353687637 IN IP[local_ip_type] [local_ip]
+      s=-
+      c=IN IP[media_ip_type] [media_ip]
+      t=0 0
+      m=audio [media_port] RTP/AVP 8
+      a=rtpmap:8 PCMA/8000
+    ]]>
+  </send>
+
+  <recv response="100" optional="true" response_txn="invite" />
+  <recv response="180" optional="true" response_txn="invite" />
+  <recv response="183" optional="true" response_txn="invite" />
+  <!-- A caller that offered plain RTP gets plain RTP back, even when the
+       vendor's side is encrypted. -->
+  <recv response="200" rtd="true" rrs="true" response_txn="invite">
+    <action>
+      <ereg regexp="m=audio [0-9]+ RTP/AVP " search_in="body" check_it="true" assign_to="answered" />
+    </action>
+  </recv>
+  <Reference variables="answered" />
+
+  <send ack_txn="invite">
+    <![CDATA[
+      ACK [next_url] SIP/2.0
+      Via: SIP/2.0/[transport] [local_ip]:[local_port];branch=[branch]
+      [routes]
+      From: sipp <sip:sipp@[local_ip]:[local_port]>;tag=[pid]SIPpTag00[call_number]
+      To: [service] <sip:[service]@[remote_ip]:[remote_port]>[peer_tag_param]
+      Call-ID: [call_id]
+      CSeq: 1 ACK
+      Max-Forwards: 70
+      Content-Length: 0
+    ]]>
+  </send>
+
+  <pause />
+
+  <send retrans="500">
+    <![CDATA[
+      BYE [next_url] SIP/2.0
+      Via: SIP/2.0/[transport] [local_ip]:[local_port];branch=[branch]
+      [routes]
+      From: sipp <sip:sipp@[local_ip]:[local_port]>;tag=[pid]SIPpTag00[call_number]
+      To: [service] <sip:[service]@[remote_ip]:[remote_port]>[peer_tag_param]
+      Call-ID: [call_id]
+      CSeq: 2 BYE
+      Max-Forwards: 70
+      Content-Length: 0
+    ]]>
+  </send>
+
+  <recv response="200" crlf="true" />
+
+  <ResponseTimeRepartition value="50, 100, 200, 500, 1000" />
+  <CallLengthRepartition value="1000, 5000, 10000, 30000" />
+</scenario>

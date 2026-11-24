@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="ISO-8859-1" ?>
+<!-- SPDX-License-Identifier: AGPL-3.0-only -->
+<!DOCTYPE scenario SYSTEM "sipp.dtd">
+<!-- Sends OPTIONS. __EXPECT__ is replaced with "answer" or "silence": a known
+     address is answered with 200, a stranger gets nothing at all. -->
+<scenario name="uac-options">
+  <send>
+    <![CDATA[
+      OPTIONS sip:[remote_ip]:[remote_port] SIP/2.0
+      Via: SIP/2.0/[transport] [local_ip]:[local_port];branch=[branch]
+      From: sipp <sip:sipp@[local_ip]:[local_port]>;tag=[pid]SIPpTag00[call_number]
+      To: <sip:[remote_ip]:[remote_port]>
+      Call-ID: [call_id]
+      CSeq: 1 OPTIONS
+      Max-Forwards: 70
+      Content-Length: 0
+    ]]>
+  </send>
+
+  <recv response="200" timeout="2000" ontimeout="silence" next="answer" />
+
+  <label id="answer" />
+  <nop next="__EXPECT__-ok" />
+
+  <label id="silence" />
+  <nop next="__EXPECT__-ok-2" />
+
+  <!-- Exactly one of the two outcomes is the expected one. -->
+  <label id="answer-ok" />
+  <nop next="done" />
+  <label id="silence-ok" />
+  <nop><action><error message="answered, although silence was expected" /></action></nop>
+  <label id="silence-ok-2" />
+  <nop next="done" />
+  <label id="answer-ok-2" />
+  <nop><action><error message="no answer, although one was expected" /></action></nop>
+
+  <label id="done" />
+</scenario>

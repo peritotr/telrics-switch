@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="ISO-8859-1" ?>
+<!-- SPDX-License-Identifier: AGPL-3.0-only -->
+<!DOCTYPE scenario SYSTEM "sipp.dtd">
+<!-- A vendor that refuses every call. SIPp cannot take the code as a parameter; the lab replaces __CODE__ before starting -->
+<scenario name="uas-reject">
+  <recv request="INVITE" crlf="true" />
+
+  <send retrans="500">
+    <![CDATA[
+      SIP/2.0 __CODE__ Rejected
+      [last_Via:]
+      [last_From:]
+      [last_To:];tag=[pid]SIPpTag01[call_number]
+      [last_Call-ID:]
+      [last_CSeq:]
+      Content-Length: 0
+    ]]>
+  </send>
+
+  <recv request="ACK" crlf="true" />
+</scenario>

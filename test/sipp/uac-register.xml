@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="ISO-8859-1" ?>
+<!-- SPDX-License-Identifier: AGPL-3.0-only -->
+<!DOCTYPE scenario SYSTEM "sipp.dtd">
+<!-- A trunk that registers: the first REGISTER is challenged, the second
+     carries the credentials given with -au and -ap (the user name is also
+     given with -s). Filled in by natlab.sh:
+       __SELF__     the address the trunk names for itself in Via; behind
+                    address translation this is not where the request comes
+                    from, and it says nothing about the port to answer to
+       __CONTACT__  the Contact header: an address in brackets, or *
+       __EXPIRES__  the time asked for; 0 takes the registration back
+       __FINAL__    the answer the second REGISTER must get
+       __EXPECT__   text that answer must carry -->
+<scenario name="uac-register">
+  <send retrans="500">
+    <![CDATA[
+      REGISTER sip:[remote_ip]:[remote_port] SIP/2.0
+      Via: SIP/2.0/[transport] __SELF__;branch=[branch]
+      From: <sip:[service]@[remote_ip]>;tag=[pid]SIPpTag00[call_number]
+      To: <sip:[service]@[remote_ip]>
+      Call-ID: [call_id]
+      CSeq: 1 REGISTER
+      Contact: __CONTACT__
+      Expires: __EXPIRES__
+      Max-Forwards: 70
+      User-Agent: sipp-lab-pbx
+      Content-Length: 0
+    ]]>
+  </send>
+
+  <recv response="100" optional="true" />
+  <recv response="401" auth="true" />
+
+  <send retrans="500">
+    <![CDATA[
+      REGISTER sip:[remote_ip]:[remote_port] SIP/2.0
+      Via: SIP/2.0/[transport] __SELF__;branch=[branch]
+      From: <sip:[service]@[remote_ip]>;tag=[pid]SIPpTag01[call_number]
+      To: <sip:[service]@[remote_ip]>
+      Call-ID: [call_id]
+      CSeq: 2 REGISTER
+      Contact: __CONTACT__
+      Expires: __EXPIRES__
+      [authentication]
+      Max-Forwards: 70
+      User-Agent: sipp-lab-pbx
+      Content-Length: 0
+    ]]>
+  </send>
+
+  <recv response="100" optional="true" />
+  <!-- Any other answer is unexpected and fails the scenario, as does an
+       answer without the text it must carry. -->
+  <recv response="__FINAL__">
+    <action>
+      <ereg regexp="__EXPECT__" search_in="msg" check_it="true" assign_to="seen" />
+    </action>
+  </recv>
+  <Reference variables="seen" />
+</scenario>

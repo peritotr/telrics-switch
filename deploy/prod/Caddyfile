@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# The panel over HTTPS. The SIP name is listed too so that Caddy obtains and
+# renews a certificate for it (sip-cert.sh hands it to the SIP core); when
+# no SIP name is set it repeats the panel's.
+{$PANEL_DOMAIN}, {$SIP_DOMAIN} {
+	encode gzip
+	reverse_proxy {$API_UPSTREAM}
+}

@@ -1,0 +1,173 @@
+<?xml version="1.0" encoding="ISO-8859-1" ?>
+<!-- SPDX-License-Identifier: AGPL-3.0-only -->
+<!DOCTYPE scenario SYSTEM "sipp.dtd">
+<!-- A client's PBX that has registered from behind address translation
+     (as "lab-nat", naming 10.0.0.5:5060 for itself) and now gets a call. It
+     listens on the lab address and port its REGISTER came from: a call sent
+     to the address it named would never arrive. The call must be addressed
+     to the contact it registered, offer plain audio and name the media
+     relay; anything else is refused with 488 (a failed check alone would
+     not stop SIPp from answering). Its own answers name the private address
+     again, and carry no "rport".
+       __END__  "wait": the caller or the switch ends the call;
+                "hangup": the PBX ends it after a second and a half;
+                "reoffer": the caller puts the call on hold, then ends it -->
+<scenario name="uas-trunk">
+  <recv request="INVITE" crlf="true" rrs="true">
+    <action>
+      <ereg regexp="INVITE sip:lab-nat@10\.0\.0\.5:5060" search_in="msg" assign_to="addressed" />
+      <ereg regexp="c=IN IP4 172\.30\.0\.11" search_in="body" assign_to="relayed" />
+      <ereg regexp="m=audio [0-9]+ RTP/AVP " search_in="body" assign_to="plain" />
+      <ereg regexp=".*" search_in="hdr" header="From:" assign_to="from" />
+      <ereg regexp=".*" search_in="hdr" header="To:" assign_to="to" />
+    </action>
+  </recv>
+  <nop test="addressed" next="check-media" />
+  <nop next="refuse" />
+  <label id="check-media" />
+  <nop test="relayed" next="check-kind" />
+  <nop next="refuse" />
+  <label id="check-kind" />
+  <nop test="plain" next="accept" />
+
+  <label id="refuse" />
+  <send>
+    <![CDATA[
+      SIP/2.0 488 Not Acceptable Here
+      [last_Via:]
+      [last_From:]
+      [last_To:];tag=[pid]SIPpTag01[call_number]
+      [last_Call-ID:]
+      [last_CSeq:]
+      Content-Length: 0
+    ]]>
+  </send>
+  <recv request="ACK" />
+  <nop><action><error message="the call did not arrive as a call to the registered contact through the relay" /></action></nop>
+
+  <label id="accept" />
+  <send>
+    <![CDATA[
+      SIP/2.0 180 Ringing
+      [last_Via:]
+      [last_From:]
+      [last_To:];tag=[pid]SIPpTag01[call_number]
+      [last_Call-ID:]
+      [last_CSeq:]
+      Contact: <sip:lab-nat@10.0.0.5:5060>
+      Content-Length: 0
+    ]]>
+  </send>
+
+  <send retrans="500">
+    <![CDATA[
+      SIP/2.0 200 OK
+      [last_Via:]
+      [last_From:]
+      [last_To:];tag=[pid]SIPpTag01[call_number]
+      [last_Call-ID:]
+      [last_CSeq:]
+      Contact: <sip:lab-nat@10.0.0.5:5060>
+      Content-Type: application/sdp
+      Content-Length: [len]
+
+      v=0
+      o=user1 53655765 2353687637 IN IP4 10.0.0.5
+      s=-
+      c=IN IP4 10.0.0.5
+      t=0 0
+      m=audio [media_port] RTP/AVP 8
+      a=rtpmap:8 PCMA/8000
+    ]]>
+  </send>
+
+  <recv request="ACK" rtd="true" crlf="true" />
+  <nop next="__END__" />
+
+  <label id="hangup" />
+  <pause milliseconds="1500" />
+  <send retrans="500">
+    <![CDATA[
+      BYE [next_url] SIP/2.0
+      Via: SIP/2.0/[transport] 10.0.0.5:5060;branch=[branch]
+      From:[$to];tag=[pid]SIPpTag01[call_number]
+      To:[$from]
+      [last_Call-ID:]
+      CSeq: 1 BYE
+      Max-Forwards: 70
+      Content-Length: 0
+    ]]>
+  </send>
+  <recv response="200" next="done" />
+
+  <label id="wait" />
+  <recv request="BYE" timeout="20000" ontimeout="late" />
+  <send next="done">
+    <![CDATA[
+      SIP/2.0 200 OK
+      [last_Via:]
+      [last_From:]
+      [last_To:]
+      [last_Call-ID:]
+      [last_CSeq:]
+      Content-Length: 0
+    ]]>
+  </send>
+
+  <label id="late" />
+  <nop><action><error message="no BYE reached the registered trunk" /></action></nop>
+
+  <!-- The caller puts the call on hold (re-INVITE): the request must arrive
+       here, where the REGISTER came from, through the relay; then the
+       caller ends the call. -->
+  <label id="reoffer" />
+  <recv request="INVITE" timeout="10000" ontimeout="unreached">
+    <action>
+      <ereg regexp="c=IN IP4 172\.30\.0\.11" search_in="body" assign_to="relayed2" />
+    </action>
+  </recv>
+  <nop test="relayed2" next="reoffer-answer" />
+  <send>
+    <![CDATA[
+      SIP/2.0 488 Not Acceptable Here
+      [last_Via:]
+      [last_From:]
+      [last_To:]
+      [last_Call-ID:]
+      [last_CSeq:]
+      Content-Length: 0
+    ]]>
+  </send>
+  <recv request="ACK" />
+  <nop><action><error message="the new offer did not come through the relay" /></action></nop>
+  <label id="reoffer-answer" />
+  <send retrans="500">
+    <![CDATA[
+      SIP/2.0 200 OK
+      [last_Via:]
+      [last_From:]
+      [last_To:]
+      [last_Call-ID:]
+      [last_CSeq:]
+      Contact: <sip:lab-nat@10.0.0.5:5060>
+      Content-Type: application/sdp
+      Content-Length: [len]
+
+      v=0
+      o=user1 53655765 2353687638 IN IP4 10.0.0.5
+      s=-
+      c=IN IP4 10.0.0.5
+      t=0 0
+      m=audio [media_port] RTP/AVP 8
+      a=rtpmap:8 PCMA/8000
+      a=recvonly
+    ]]>
+  </send>
+  <recv request="ACK" />
+  <nop next="wait" />
+  <label id="unreached" />
+  <nop><action><error message="no new offer reached the registered trunk" /></action></nop>
+
+  <label id="done" />
+  <Reference variables="addressed,relayed,plain,from,to" />
+</scenario>

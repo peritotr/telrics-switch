@@ -1,0 +1,155 @@
+<?xml version="1.0" encoding="ISO-8859-1" ?>
+<!-- SPDX-License-Identifier: AGPL-3.0-only -->
+<!DOCTYPE scenario SYSTEM "sipp.dtd">
+<!-- A vendor that takes only encrypted media: the INVITE must offer SRTP
+     with a key (anything else is refused with 488),
+     and the answer carries a key of its own. In the lab it sits behind a
+     TLS terminator on port 5061, which is the address it gives as Contact.
+     An INVITE without an offer (T-43, ADR-0043) gets an encrypted offer
+     with a key in the 200; the answer in the ACK must come through the
+     media relay, encrypted and with a key of its own. Otherwise the
+     caller's BYE is answered 488, which fails the caller's scenario. -->
+<scenario name="uas-srtp">
+  <recv request="INVITE" crlf="true">
+    <action>
+      <ereg regexp="m=audio [0-9]+ RTP/SAVP " search_in="body" assign_to="offered" />
+      <ereg regexp="a=crypto:" search_in="body" assign_to="keyed" />
+      <ereg regexp="m=audio" search_in="body" assign_to="any" />
+    </action>
+  </recv>
+  <nop test="any" next="early" />
+
+  <!-- No offer: this vendor makes one, encrypted. -->
+  <send retrans="500">
+    <![CDATA[
+      SIP/2.0 200 OK
+      [last_Via:]
+      [last_From:]
+      [last_To:];tag=[pid]SIPpTag01[call_number]
+      [last_Call-ID:]
+      [last_CSeq:]
+      [last_Record-Route:]
+      Contact: <sip:[local_ip]:5061;transport=tls>
+      Content-Type: application/sdp
+      Content-Length: [len]
+
+      v=0
+      o=user1 53655765 2353687637 IN IP[local_ip_type] [local_ip]
+      s=-
+      c=IN IP[media_ip_type] [media_ip]
+      t=0 0
+      m=audio [media_port] RTP/SAVP 8
+      a=rtpmap:8 PCMA/8000
+      a=crypto:1 AES_CM_128_HMAC_SHA1_80 inline:d0RmdmcmVCspeEc3QGZiNWpVLFJhQX1cfHAwJSoj
+    ]]>
+  </send>
+  <recv request="ACK" crlf="true">
+    <action>
+      <ereg regexp="c=IN IP4 172\.30\.0\.11" search_in="body" assign_to="lrelayed" />
+      <ereg regexp="m=audio [0-9]+ RTP/SAVP 8" search_in="body" assign_to="lsavp" />
+      <ereg regexp="a=crypto:" search_in="body" assign_to="lkeyed" />
+    </action>
+  </recv>
+  <recv request="BYE" />
+  <nop test="lrelayed" next="l1" />
+  <nop next="lbad" />
+  <label id="l1" />
+  <nop test="lsavp" next="l2" />
+  <nop next="lbad" />
+  <label id="l2" />
+  <nop test="lkeyed" next="bye" />
+  <label id="lbad" />
+  <send next="end">
+    <![CDATA[
+      SIP/2.0 488 Not Acceptable Here
+      [last_Via:]
+      [last_From:]
+      [last_To:]
+      [last_Call-ID:]
+      [last_CSeq:]
+      Content-Length: 0
+    ]]>
+  </send>
+
+  <label id="early" />
+  <!-- Anything but an encrypted offer with a key is refused with 488. -->
+  <nop test="offered" next="keyed" />
+  <nop next="refuse" />
+  <label id="keyed" />
+  <nop test="keyed" next="accept" />
+
+  <label id="refuse" />
+  <send>
+    <![CDATA[
+      SIP/2.0 488 Not Acceptable Here
+      [last_Via:]
+      [last_From:]
+      [last_To:];tag=[pid]SIPpTag01[call_number]
+      [last_Call-ID:]
+      [last_CSeq:]
+      Content-Length: 0
+    ]]>
+  </send>
+  <recv request="ACK" />
+  <nop next="end" />
+
+  <label id="accept" />
+  <send>
+    <![CDATA[
+      SIP/2.0 180 Ringing
+      [last_Via:]
+      [last_From:]
+      [last_To:];tag=[pid]SIPpTag01[call_number]
+      [last_Call-ID:]
+      [last_CSeq:]
+      [last_Record-Route:]
+      Contact: <sip:[local_ip]:5061;transport=tls>
+      Content-Length: 0
+    ]]>
+  </send>
+
+  <send retrans="500">
+    <![CDATA[
+      SIP/2.0 200 OK
+      [last_Via:]
+      [last_From:]
+      [last_To:];tag=[pid]SIPpTag01[call_number]
+      [last_Call-ID:]
+      [last_CSeq:]
+      [last_Record-Route:]
+      Contact: <sip:[local_ip]:5061;transport=tls>
+      Content-Type: application/sdp
+      Content-Length: [len]
+
+      v=0
+      o=user1 53655765 2353687637 IN IP[local_ip_type] [local_ip]
+      s=-
+      c=IN IP[media_ip_type] [media_ip]
+      t=0 0
+      m=audio [media_port] RTP/SAVP 8
+      a=rtpmap:8 PCMA/8000
+      a=crypto:1 AES_CM_128_HMAC_SHA1_80 inline:d0RmdmcmVCspeEc3QGZiNWpVLFJhQX1cfHAwJSoj
+    ]]>
+  </send>
+
+  <recv request="ACK" optional="true" rtd="true" crlf="true" />
+  <recv request="BYE" />
+  <label id="bye" />
+
+  <send>
+    <![CDATA[
+      SIP/2.0 200 OK
+      [last_Via:]
+      [last_From:]
+      [last_To:]
+      [last_Call-ID:]
+      [last_CSeq:]
+      Contact: <sip:[local_ip]:5061;transport=tls>
+      Content-Length: 0
+    ]]>
+  </send>
+
+  <label id="end" />
+  <Reference variables="any,lrelayed,lsavp,lkeyed" />
+  <timewait milliseconds="4000" />
+</scenario>

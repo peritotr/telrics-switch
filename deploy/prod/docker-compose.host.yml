@@ -1,0 +1,119 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Production: the SIP core, the media relay and the engine use the server's
+# own network. Media ports are not published one by one through Docker, and
+# the three talk to each other and to the data stores over 127.0.0.1.
+services:
+  opensips:
+    network_mode: host
+    environment:
+      SIP_IP: ${SIP_IP:?}
+      SIP_ADVERTISED_IP: ${SIP_ADVERTISED_IP:-}
+      # IPv6 as well, when set (T-28); empty: IPv4 only, as before.
+      SIP_IP6: ${SIP_IP6:-}
+      SIP_ADVERTISED_IP6: ${SIP_ADVERTISED_IP6:-}
+      SIP_REALM: ${SIP_REALM:-softswitch}
+      UDP_WORKERS: ${UDP_WORKERS:-16}
+      OPENSIPS_SHM_MB: ${OPENSIPS_SHM_MB:-1024}
+      ENGINE_URL: http://127.0.0.1:58090
+      MI_SOCKET: 127.0.0.1:8899
+      RTP_CONTROL: 127.0.0.1:2223
+      SIP_METRICS: 127.0.0.1:8888
+      TRACE_TARGET: ${TRACE_TARGET-127.0.0.1:59060}
+      HEP_TARGET: ${HEP_TARGET:-}
+
+  rtpengine:
+    network_mode: host
+    environment:
+      RTP_INTERFACE: ${RTP_INTERFACE:?}
+      RTP_CONTROL: 127.0.0.1:2223
+      RTP_TEARDOWN_URL: http://127.0.0.1:8888/RPC2
+      RTP_PORT_MIN: ${RTP_PORT_MIN:-30000}
+      RTP_PORT_MAX: ${RTP_PORT_MAX:-39999}
+      RTP_THREADS: ${RTP_THREADS:-8}
+      RTP_KERNEL_TABLE: ${RTP_KERNEL_TABLE:--1}
+
+  route-engine:
+    network_mode: host
+    environment:
+      DATABASE_URL: postgres://softswitch:${PG_PASSWORD:?}@127.0.0.1:56432/softswitch
+      REDIS_URL: redis://127.0.0.1:56379/0
+      NATS_URL: nats://127.0.0.1:54222
+      LISTEN: 127.0.0.1:58090
+      RELOAD_SEC: "30"
+      OPENSIPS_MI: 127.0.0.1:8899
+      TLS_CA_LIST: ${TLS_CA_LIST:-}
+      PEER_VERIFY: ${PEER_VERIFY:-on}
+      REG_MIN_EXPIRES: ${REG_MIN_EXPIRES:-60}
+      REG_MAX_EXPIRES: ${REG_MAX_EXPIRES:-3600}
+      REG_NAT_EXPIRES: ${REG_NAT_EXPIRES:-60}
+      SIP_TLS_ADDR: ${SIP_IP:?}:5061
+
+  # The engine listens on 127.0.0.1 only, so the API sits next to it.
+  api:
+    network_mode: host
+    environment:
+      DATABASE_URL: postgres://softswitch:${PG_PASSWORD:?}@127.0.0.1:56432/softswitch
+      CLICKHOUSE_URL: http://softswitch:${CLICKHOUSE_PASSWORD:?}@127.0.0.1:58123/softswitch
+      LISTEN: 127.0.0.1:${API_PORT:-58080}
+      METRICS_LISTEN: 127.0.0.1:58091
+      ENGINE_URL: http://127.0.0.1:58090
+      # The parts the panel's system page asks besides the database, the
+      # engine and ClickHouse, which the API knows by itself.
+      SYSTEM_SERVICES: "SIP çekirdeği (OpenSIPS)=http://127.0.0.1:8888/metrics, Medya (rtpengine)=http://127.0.0.1:2225/metrics, Ücretlendirme (rater)=http://127.0.0.1:58092/metrics, Çağrı izi (trace-collector)=http://127.0.0.1:58093/metrics"
+
+  # Next to the SIP core, so that its copies arrive from the SIP address
+  # itself: that is how received messages are told from sent ones.
+  trace-collector:
+    network_mode: host
+    environment:
+      CLICKHOUSE_URL: http://softswitch:${CLICKHOUSE_PASSWORD:?}@127.0.0.1:58123/softswitch
+      HEP_LISTEN: 127.0.0.1:59060
+      METRICS_LISTEN: 127.0.0.1:58093
+      SIP_ADDRS: ${SIP_IP:?},${SIP_ADVERTISED_IP:-},${SIP_IP6:-},${SIP_ADVERTISED_IP6:-}
+
+  caddy:
+    network_mode: host
+    environment:
+      PANEL_DOMAIN: ${PANEL_DOMAIN:-localhost}
+      SIP_DOMAIN: ${SIP_DOMAIN:-${PANEL_DOMAIN:-localhost}}
+      API_UPSTREAM: 127.0.0.1:${API_PORT:-58080}
+
+  rater:
+    ports: ["127.0.0.1:58092:58092"]
+
+  prometheus:
+    network_mode: host
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=${METRICS_KEEP:-30d}
+      - --web.listen-address=127.0.0.1:59090
+    volumes:
+      - ./monitoring/host:/etc/prometheus/targets:ro
+
+  alertmanager:
+    network_mode: host
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+      - --web.listen-address=127.0.0.1:59093
+      - --cluster.listen-address=
+
+  # The server itself: disk, memory, processor.
+  node-exporter:
+    restart: unless-stopped
+    profiles: [monitoring]
+    image: prom/node-exporter:v1.8.2
+    network_mode: host
+    pid: host
+    command: ["--path.rootfs=/host", "--web.listen-address=127.0.0.1:59100"]
+    volumes: ["/:/host:ro,rslave"]
+
+  postgres:
+    ports: ["127.0.0.1:56432:5432"]
+  clickhouse:
+    ports: ["127.0.0.1:58123:8123"]
+  redis:
+    ports: ["127.0.0.1:56379:6379"]
+  nats:
+    ports: ["127.0.0.1:54222:4222"]

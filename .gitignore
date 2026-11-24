@@ -1,0 +1,30 @@
+# Local and editor files
+.DS_Store
+.env
+.env.*
+!.env.example
+.idea/
+.vscode/
+*.swp
+# Build and test output
+/bin/
+/dist/
+*.test
+*.out
+coverage.*
+web/dist/
+web/node_modules/
+# Keys and certificates must never be tracked
+*.pem
+*.key
+*.p12
+*.pfx
+test/load/out/
+deploy/compose/certs/
+deploy/prod/.env
+deploy/prod/certs/
+deploy/prod/backups/
+deploy/prod/.env.smoke
+deploy/prod/backups-smoke/
+deploy/prod/certs-smoke/
+deploy/prod/monitoring/alertmanager.yml

@@ -55,3 +55,5 @@ Yeni kayıt: sıradaki numara, `NNNN-kisa-ad.md`, aynı başlıklar. Karar veril
 | [0047](0047-ipv6-adres-ailesi.md) | IPv6'da medyanın adres ailesini betik hedefin adres biçiminden seçer; kaynak adresi motorda tek biçime çevrilir | 2026-11-23 |
 | [0048](0048-gorunumde-yalnizca-degisen-fiyatlar.md) | Görüntü yüklenirken fiyatların yalnızca değişeni okunur; değişikliği veritabanındaki tetikleyici not eder | 2026-11-24 |
 | [0049](0049-panelin-ingilizce-arayuzu.md) | Panelin Türkçenin yanında İngilizce arayüzü olur; dil katmanı bağımlılıksızdır | 2026-11-24 |
+| [0050](0050-kullaniciya-donuk-belgelerin-ingilizcesi.md) | Kullanıcıya dönük belgelerin İngilizcesi `docs/en/` içinde durur; kaynak Türkçedir, kayma `make check-docs-en` ile denetlenir | 2026-11-24 |
+| [0051](0051-surumler-yayin-ve-ci.md) | Sürümler `vANA.ARA.YAMA` etiketiyle GitHub'da yayımlanır, sürüm derlemeye gömülür; sunucu `upgrade.sh <etiket>` ile yükseltilir, geri dönüş yedekle; CI laboratuvarsız denetimleri yapar | 2026-11-24 |

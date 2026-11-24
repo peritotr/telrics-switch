@@ -36,6 +36,8 @@ export const tr = {
   'shell.readonly': 'Salt okunur',
   'shell.admin': 'Yönetici',
   'shell.logout': 'Oturumu kapat',
+  'shell.version': 'Sürüm {version}',
+  'shell.panelVersion': 'Sunucu {server} · panel {panel}',
 
   'role.admin': 'Yönetici',
   'role.readonly': 'Salt okunur',
@@ -187,6 +189,8 @@ export const en: Record<keyof typeof tr, string> = {
   'shell.readonly': 'Read-only',
   'shell.admin': 'Admin',
   'shell.logout': 'Sign out',
+  'shell.version': 'Version {version}',
+  'shell.panelVersion': 'Server {server} · panel {panel}',
 
   'role.admin': 'Admin',
   'role.readonly': 'Read-only',

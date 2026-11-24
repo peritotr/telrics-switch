@@ -60,7 +60,7 @@ services:
 
   route-engine:
     <<: [*service, *nofile]
-    build: { context: ../.., dockerfile: deploy/images/go/Dockerfile, args: { CMD: route-engine } }
+    build: { context: ../.., dockerfile: deploy/images/go/Dockerfile, args: { CMD: route-engine, VERSION: "${SOFTSWITCH_VERSION:-dev}" } }
     # The engine checks the names in TLS vendors' certificates against the
     # same authorities the SIP core accepts, so it reads the same files.
     volumes:
@@ -90,7 +90,7 @@ services:
   # Applies the schema on start and serves the panel.
   api:
     <<: *service
-    build: { context: ../.., dockerfile: deploy/prod/images/api/Dockerfile }
+    build: { context: ../.., dockerfile: deploy/prod/images/api/Dockerfile, args: { VERSION: "${SOFTSWITCH_VERSION:-dev}" } }
     environment:
       <<: *app-env
       BOOTSTRAP_API_KEY: ${BOOTSTRAP_API_KEY:?}
@@ -113,7 +113,7 @@ services:
   # Prices call records from the queue and copies them to ClickHouse.
   rater:
     <<: *service
-    build: { context: ../.., dockerfile: deploy/images/go/Dockerfile, args: { CMD: rater } }
+    build: { context: ../.., dockerfile: deploy/images/go/Dockerfile, args: { CMD: rater, VERSION: "${SOFTSWITCH_VERSION:-dev}" } }
     environment:
       <<: *app-env
       METRICS_LISTEN: 0.0.0.0:58092
@@ -128,7 +128,7 @@ services:
   # call traces. Not on the call path: calls go on without it.
   trace-collector:
     <<: *service
-    build: { context: ../.., dockerfile: deploy/images/go/Dockerfile, args: { CMD: trace-collector } }
+    build: { context: ../.., dockerfile: deploy/images/go/Dockerfile, args: { CMD: trace-collector, VERSION: "${SOFTSWITCH_VERSION:-dev}" } }
     environment:
       TRACE_KEEP_DAYS: ${TRACE_KEEP_DAYS:-7}
     depends_on:

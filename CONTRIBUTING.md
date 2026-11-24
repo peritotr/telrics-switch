@@ -1,83 +1,84 @@
-# Katkı
+<!-- English version of CONTRIBUTING.tr.md; the Turkish document is the source and both are updated together. -->
+# Contributing
 
-Katkınız için teşekkürler. Lütfen bir değişiklik göndermeden önce bu sayfayı okuyun.
+Thank you for contributing. Please read this page before you send a change.
 
-> **English summary.** Contributions are welcome, but no contribution can be merged until its author has signed the Contributor License Agreement (CLA). The CLA document will be published by the maintainers; until then, pull requests can be discussed but not merged. Code, comments and commit messages are in English; documentation under `docs/` and the panel UI are in Turkish. Please read `docs/ARCHITECTURE.md` and the decision records in `docs/decisions/` before proposing a change; the invariants and code standards below are binding. Report security issues as described in `SECURITY.md`, not as public issues.
+> English version of [`CONTRIBUTING.tr.md`](CONTRIBUTING.tr.md) (Turkish), which is the authoritative text; the two are updated together.
 
-## Katkı sözleşmesi (CLA)
+## Contributor licence agreement (CLA)
 
-Bu depodaki kod AGPL-3.0-only ile yayımlanır ve aynı kod ticari lisanslı Enterprise sürümünün de temelidir. Bir katkının iki lisans altında da dağıtılabilmesi için katkı sahibinin bu hakkı açıkça tanıması gerekir; bu, katkı sözleşmesiyle (Contributor License Agreement, CLA) yapılır.
+The code in this repository is published under AGPL-3.0-only, and the same code is also the basis of the commercially licensed Enterprise edition. For a contribution to be distributable under both licences, its author must grant that right explicitly; this is done with a Contributor License Agreement (CLA).
 
-- CLA belgesi proje sahipleri tarafından ayrıca yayımlanacaktır. Bu sayfa CLA'nın kendisi değildir ve onun yerine geçmez.
-- **İmzalanmış CLA'sı olmayan katkı birleştirilmez.** CLA yayımlanana kadar çekme istekleri (pull request) tartışılabilir, ancak birleştirilemez.
-- Başkasına ait kodu (ör. işvereninizin hakları olan kodu) katkı olarak göndermeden önce gerekli izni aldığınızdan emin olun.
+- The CLA document will be published separately by the maintainers. This page is not the CLA and does not replace it.
+- **No contribution without a signed CLA is merged.** Until the CLA is published, pull requests can be discussed but not merged.
+- Before contributing code that belongs to someone else (for example code your employer holds rights to), make sure you have the necessary permission.
 
-## Başlamadan önce
+## Before you start
 
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), [`docs/decisions/`](docs/decisions/README.md) ve [`docs/TASKS.md`](docs/TASKS.md) dosyalarını okuyun. Ayrıntı: [`docs/08-cagri-arayuzu.md`](docs/08-cagri-arayuzu.md) (motor ↔ SIP çekirdeği arayüzü), [`docs/06-api.md`](docs/06-api.md), [`docs/07-panel.md`](docs/07-panel.md), [`docs/09-kurulum.md`](docs/09-kurulum.md), [`docs/10-izleme.md`](docs/10-izleme.md).
-- **Kararlar bağlayıcıdır.** Bir karar kaydına (ADR), `docs/ARCHITECTURE.md` içindeki bir kurala ya da aşağıdaki değişmez kurallara aykırı düşen bir değişiklik gerekiyorsa önce bir hata kaydı (issue) açıp tartışın. Karar değişirse eskisini "Yerini aldı" diye işaretleyen yeni bir ADR yazılır ve mimari belgesi aynı değişiklikte güncellenir.
-- Belgelerde **AÇIK SORU** diye işaretlenen noktalara dayanan işler için önce karar gerekir.
-- Enterprise sürümüne ait özellikler (bayi hiyerarşisi, fatura, DID, kümeleme, medya havuzu, kalite tabanlı yönlendirme, dolandırıcılık tespiti, lisans doğrulama) bu depoya yazılmaz; yalnızca genişleme noktaları ve tek hesaplı/tek düğümlü varsayılanlar buradadır ([`docs/04-acik-cekirdek-modeli.md`](docs/04-acik-cekirdek-modeli.md); genişleme noktalarının listesi `docs/ARCHITECTURE.md` §12). Panelde Enterprise özelliği hiçbir biçimde görünmez (kilitli ekran, soluk menü ya da etiket yok).
+- Read [`docs/en/ARCHITECTURE.md`](docs/en/ARCHITECTURE.md), [`docs/decisions/`](docs/decisions/README.md) (Turkish) and [`docs/TASKS.md`](docs/TASKS.md) (Turkish). Details: [`docs/08-cagri-arayuzu.md`](docs/08-cagri-arayuzu.md) (Turkish; the interface between the engine and the SIP core), [`docs/en/06-api.md`](docs/en/06-api.md), [`docs/07-panel.md`](docs/07-panel.md) (Turkish), [`docs/en/09-installation.md`](docs/en/09-installation.md), [`docs/en/10-monitoring.md`](docs/en/10-monitoring.md).
+- **Decisions are binding.** If a change would go against a decision record (ADR), a rule in `docs/en/ARCHITECTURE.md` or the invariants below, open an issue and discuss it first. If a decision changes, a new ADR is written that marks the old one "Superseded", and the architecture document is updated in the same change.
+- Work that depends on a point marked **OPEN QUESTION** (Turkish: **AÇIK SORU**) in the documents needs a decision first.
+- Features of the Enterprise edition (reseller hierarchy, invoicing, DIDs, clustering, media pool, quality-based routing, fraud detection, licence verification) are not written in this repository; only the extension points and the single-account / single-node defaults are here ([`docs/en/04-open-core.md`](docs/en/04-open-core.md); the list of extension points is in `docs/en/ARCHITECTURE.md` §12). Enterprise features never appear in the panel in any form (no locked screens, greyed-out menus or labels).
 
-## Değişmez kurallar
+## Invariants
 
-- **Çağrı yolunda SQL sorgusu yok.** route-engine bellekteki görüntüden karar verir; çağrı başına yalnızca Redis'e, tek bir betikle gider (ADR-0003).
-- **Karar süresi bütçesi: p99 < 10 ms.** Çağrı yoluna dokunan her değişiklikte benchmark çalıştırın (`go test -bench Authorize ./pkg/routing`, `make load CPS=200 CC=2000`).
-- **Para tamsayıdır.** Tutarlar en küçük birimde (1/1.000.000) `int64`; Go, SQL, Lua ve TypeScript'te para için kayan nokta yok (ADR-0004). Fiyat seçimi ve tutar yalnızca `pkg/rating` ile (ADR-0010).
-- **CDR kaybolmaz.** Olaylar kuyruğa en-az-bir-kez yazılır; tüketiciler tekrar işlemeye dayanıklıdır (ADR-0006, ADR-0029).
-- **SIP çekirdeği ile route-engine arasındaki arayüz sürümlüdür** ve SIP sunucusundan bağımsızdır; OpenSIPS'e özgü kavram arayüze sızmaz (ADR-0002).
-- **Her SIP özelliği bir SIPp senaryosuyla gelir.** Senaryosu olmayan SIP davranışı tamamlanmış sayılmaz.
-- **Şema yalnızca migration dosyasıyla değişir;** her migration var olan satırları eski davranışında bırakır. ClickHouse dosyası tek ifadedir ve yeniden çalıştırılabilir.
-- **`core`, `enterprise`'ı asla içe aktarmaz.** OpenSIPS ve rtpengine GPL'dir: onlarla yalnızca ağ üzerinden konuşulur, kodları bağlanmaz ya da kopyalanmaz (ADR-0009).
+- **No SQL queries on the call path.** route-engine decides from the in-memory snapshot; per call it goes only to Redis, with a single script (ADR-0003).
+- **Decision time budget: p99 < 10 ms.** Run the benchmarks for every change that touches the call path (`go test -bench Authorize ./pkg/routing`, `make load CPS=200 CC=2000`).
+- **Money is an integer.** Amounts are `int64` in the smallest unit (1/1,000,000); no floating point for money in Go, SQL, Lua or TypeScript (ADR-0004). Rate selection and amounts only through `pkg/rating` (ADR-0010).
+- **CDRs are never lost.** Events are written to the queue at least once; consumers are safe to reprocess (ADR-0006, ADR-0029).
+- **The interface between the SIP core and route-engine is versioned** and independent of the SIP server; no OpenSIPS-specific concept leaks into it (ADR-0002).
+- **Every SIP feature comes with a SIPp scenario.** SIP behaviour without a scenario is not considered done.
+- **The schema changes only through migration files;** every migration leaves existing rows with their old behaviour. A ClickHouse file is a single statement and can be run again.
+- **`core` never imports `enterprise`.** OpenSIPS and rtpengine are GPL: we talk to them over the network only and neither link to nor copy their code (ADR-0009).
 
-## Kod standartları
+## Code standards
 
-- **Go:** `gofmt` ve `go vet` temiz; hata yutulmaz, bağlamıyla sarılıp döndürülür (`fmt.Errorf("…: %w", err)`); panik yalnızca programcı hatasında (ör. aynı ölçünün iki kez kaydı). Dışa açık her ad ve açık olmayan her karar için "neden"i söyleyen kısa yorum.
-- **Çağrı yolu** (`pkg/routing`, `pkg/rating`, `pkg/engine` içindeki karar ve olay kodu): giriş/çıkış yalnızca tek Redis betiği; kilit altında bekleme yok; paylaşılan durum `atomic.Pointer` ile değiştirilir, yerinde değiştirilmez.
-- **OpenSIPS betiği ince kalır:** karar içermez; her `rest_post` öncesinde `route(engine_token)`; adres ve alan sabit yazılmaz (betik şablondur, `docs/09-kurulum.md`). Bu OpenSIPS sürümünde (3.6.10) `async()` öncesinde isteği değiştiren komut (`consume_credentials`, `fix_nated_contact`, `remove_hf`, `append_hf` …) kullanılmaz; isteği devam rotasında değiştirin (`docs/ARCHITECTURE.md` §4).
-- **Testler:** saf mantık birim testiyle, API uçtan uca testle (`make test-api`), SIP davranışı SIPp senaryosuyla (`make test-routing`). Zamana bağlı test sabit tarih kullanırken başka testin "şimdi" penceresine düşmemeli.
-- **API:** yeni uç `s.Handle` ya da `s.HandlePublic` ile, özeti ve gövde türleriyle kaydedilir (OpenAPI oradan üretilir; `docs/06-api.md`, "Yeni bir ucun tanımı"). Yazan her işlem denetim kaydını aynı işlemde yazar (`Server.Audit`; hiçbir şeyi değiştirmeyen çağrıda `AuditNothing`).
-- **TypeScript:** `npx tsc --noEmit -p .` temiz; ortak bileşenler `web/src/ui/kit.tsx`. Arayüz metni yalnızca kataloglardan gelir (Türkçe ve İngilizce), `text-transform: uppercase` kullanılmaz; tutarlar `web/src/lib/format.ts` ile biçimlenir; oturum anahtarı yalnızca bellekte tutulur (tarayıcı deposuna yazılmaz); listeler sunucu taraflı sayfalanır. Tasarımda olmayan ekran ve durumlar ortak bileşenlerle yazılır ve `docs/07-panel.md` içindeki sapmalar tablosuna eklenir.
-- **Sırlar** (parola, belirteç, anahtar) günlüğe, hata iletisine, denetim kaydına, test çıktısına ve depoya yazılmaz; laboratuvar değerleri tohum dosyalarından okunur.
-- Yeni her kaynak dosyası `SPDX-License-Identifier: AGPL-3.0-only` başlığı taşır.
-- **Dil:** kod, yorumlar ve commit iletileri İngilizce; `docs/` Türkçe; arayüz Türkçe ve İngilizce (metinler `web/src/i18n/` kataloglarında, ADR-0049; `npm run check-i18n` iki kataloğun eşit olduğunu denetler).
-- Bir değişiklik, ilgili belgeler güncellenmeden bitmiş sayılmaz: dokunulan alanın belgesi, `docs/03-yol-haritasi.md` ve `docs/05-ozellik-katalogu.md`.
+- **Go:** clean under `gofmt` and `go vet`; errors are never swallowed but wrapped with context and returned (`fmt.Errorf("…: %w", err)`); panics only for programmer errors (e.g. registering the same metric twice). A short comment saying "why" for every exported name and every non-obvious decision.
+- **Call path** (`pkg/routing`, `pkg/rating`, the decision and event code in `pkg/engine`): I/O only through a single Redis script; no waiting under a lock; shared state is replaced with `atomic.Pointer`, never modified in place.
+- **The OpenSIPS script stays thin:** it makes no decisions; `route(engine_token)` before every `rest_post`; no hard-coded addresses or realms (the script is a template, `docs/en/09-installation.md`). In this OpenSIPS version (3.6.10), no command that changes the request (`consume_credentials`, `fix_nated_contact`, `remove_hf`, `append_hf` …) is used before `async()`; change the request in the resume route instead (`docs/en/ARCHITECTURE.md` §4).
+- **Tests:** pure logic with unit tests, the API with end-to-end tests (`make test-api`), SIP behaviour with SIPp scenarios (`make test-routing`). A time-dependent test using a fixed date must not fall into another test's "now" window.
+- **API:** a new endpoint is registered with `s.Handle` or `s.HandlePublic`, with its summary and body types (the OpenAPI description is generated from them; `docs/en/06-api.md`, "Describing a new endpoint"). Every operation that writes records the audit log in the same transaction (`Server.Audit`; `AuditNothing` for a call that changes nothing).
+- **TypeScript:** clean under `npx tsc --noEmit -p .`; shared components in `web/src/ui/kit.tsx`. Interface text comes only from the catalogues (Turkish and English); no `text-transform: uppercase`; amounts are formatted with `web/src/lib/format.ts`; the session key is kept in memory only (never written to browser storage); lists are paginated on the server. Screens and states that are not in the design are built from the shared components and added to the deviations table in `docs/07-panel.md` (Turkish).
+- **Secrets** (passwords, tokens, keys) are never written to logs, error messages, the audit log, test output or the repository; lab values are read from the seed files.
+- Every new source file carries the header `SPDX-License-Identifier: AGPL-3.0-only`.
+- **Language:** code, comments and commit messages in English; `docs/` in Turkish (the English versions of the user-facing documents are in `docs/en/` and are updated in the same change as the Turkish ones; ADR-0050); the interface in Turkish and English (texts in the `web/src/i18n/` catalogues, ADR-0049; `npm run check-i18n` checks that the two catalogues match).
+- A change is not done until the relevant documents are updated: the document of the area touched, `docs/03-yol-haritasi.md` and `docs/05-ozellik-katalogu.md`.
 
-## Komutlar
+## Commands
 
-| Komut | Ne yapar |
+| Command | What it does |
 |---|---|
-| `make lab-up` / `make lab-down` | Laboratuvar ortamı (OpenSIPS, rtpengine, SIPp, PostgreSQL 127.0.0.1:56432, Redis 127.0.0.1:56379, ClickHouse 127.0.0.1:58123, posta yakalayıcı 127.0.0.1:58025, NATS, route-engine 127.0.0.1:58090, rater, trace-collector); önce laboratuvar sertifikalarını üretir. Go kodunu değiştirince `make lab-up` yeniden derler |
-| `make lab-seed` | Laboratuvar müşterisi, sağlayıcıları ve rotaları (`test/seed/lab-routing.sql`) |
-| `make test` | Birim testleri (`go test ./...`; laboratuvar gerekmez) |
-| `make test-engine` | route-engine testleri (laboratuvar Redis'inde 15 numaralı veritabanını her seferinde siler) |
-| `make test-api` | API uçtan uca testi (laboratuvar PostgreSQL'inde `softswitch_test` veritabanını her seferinde siler) |
-| `make test-openapi` | API tanımının Redocly denetimi (`npx` gerekir) |
-| `make test-routing` | Gerçek çağrılarla yönlendirme senaryoları (SIPp) |
-| `make test-journal` | NATS kesikken motor ölünce çağrı kaydının kaybolmadığının senaryosu (tek başına çalıştırın) |
-| `make test-reports` | Özet raporu ve çağrı listesini ClickHouse ile PostgreSQL'den alıp karşılaştırır (`make api-run` gerekir) |
-| `make test-archive` | Eski çağrı kayıtlarının arşivlenmesi ve ClickHouse'tan okunması |
-| `make test-mail` | Parola sıfırlama e-postası, laboratuvar posta yakalayıcısı üzerinden (`make api-run` ve `make seed-user` gerekir) |
-| `make test-nft` | Örnek ağ katmanı kurallarının denetimi, atılan bir konteynerde |
-| `make test-call` | OpenSIPS, route-engine ve rtpengine üzerinden tek çağrı |
-| `make load CPS=<n> CC=<n>` | Yük testi; rapor ve PASS/FAIL (karar süresi p99 bütçesi dahil) |
-| `make bench-snapshot` | 5 milyon fiyatlı görüntünün yükleme süresi ve belleği |
-| `BOOTSTRAP_API_KEY=... make api-run` | API'yi 127.0.0.1:58080'de çalıştırır |
-| `make seed-user` / `make seed` | Laboratuvar panel kullanıcısı / panel için örnek veri (`test/seed/dev.env`) |
-| `make panel-install` / `make panel-dev` / `make panel-build` | Paneli 127.0.0.1:58081'de çalıştırır (API çağrılarını 58080'e iletir) / `web/dist` üretir (`WEB_DIR=web/dist` ile API sunar) |
-| `make prod-smoke` | Tek sunucu kurulumunu (`deploy/prod`) özel bir Docker ağında uçtan uca dener: kurulum, çağrı, çökme, yedek ve geri yükleme, yükseltme |
+| `make lab-up` / `make lab-down` | Lab environment (OpenSIPS, rtpengine, SIPp, PostgreSQL 127.0.0.1:56432, Redis 127.0.0.1:56379, ClickHouse 127.0.0.1:58123, mail catcher 127.0.0.1:58025, NATS, route-engine 127.0.0.1:58090, rater, trace-collector); generates the lab certificates first. After changing Go code, `make lab-up` rebuilds |
+| `make lab-seed` | Lab client, vendors and routes (`test/seed/lab-routing.sql`) |
+| `make test` | Unit tests (`go test ./...`; no lab needed) |
+| `make test-engine` | route-engine tests (wipes database 15 in the lab Redis on every run) |
+| `make test-api` | API end-to-end test (wipes the `softswitch_test` database in the lab PostgreSQL on every run) |
+| `make test-openapi` | Redocly lint of the API description (needs `npx`) |
+| `make test-routing` | Routing scenarios with real calls (SIPp) |
+| `make test-journal` | Scenario showing that no CDR is lost when the engine dies while NATS is down (run it on its own) |
+| `make test-reports` | Fetches the summary report and the call list from ClickHouse and PostgreSQL and compares them (needs `make api-run`) |
+| `make test-archive` | Archiving old CDRs and reading them back from ClickHouse |
+| `make test-mail` | Password reset e-mail through the lab mail catcher (needs `make api-run` and `make seed-user`) |
+| `make test-nft` | Checks the sample network-level rules in a throwaway container |
+| `make test-call` | A single call through OpenSIPS, route-engine and rtpengine |
+| `make load CPS=<n> CC=<n>` | Load test; report and PASS/FAIL (including the decision-time p99 budget) |
+| `make bench-snapshot` | Load time and memory of a snapshot with 5 million rates |
+| `BOOTSTRAP_API_KEY=... make api-run` | Runs the API on 127.0.0.1:58080 |
+| `make seed-user` / `make seed` | Lab panel user / demo data for the panel (`test/seed/dev.env`) |
+| `make panel-install` / `make panel-dev` / `make panel-build` | Runs the panel on 127.0.0.1:58081 (forwards API calls to 58080) / produces `web/dist` (served by the API with `WEB_DIR=web/dist`) |
+| `make prod-smoke` | Tries the single-server install (`deploy/prod`) end to end on a private Docker network: install, a call, a crash, backup and restore, upgrade |
 
-Notlar: OpenSIPS'in arm64 paketi olmadığı için imaj kaynaktan derlenir (ilk kurulum birkaç dakika sürer). SIPp'in yerleşik `uac`/`uas` senaryoları Record-Route'a uymaz; `test/sipp/` altındakileri kullanın. `test/sipp/run.sh` çalışırken dosyayı düzenlemeyin.
+Notes: OpenSIPS has no arm64 package, so the image is built from source (the first install takes a few minutes). SIPp's built-in `uac`/`uas` scenarios do not honour Record-Route; use the ones under `test/sipp/`. Do not edit `test/sipp/run.sh` while it is running.
 
-## Çekme isteği göndermeden önce
+## Before sending a pull request
 
 ```sh
 gofmt -l . && go vet ./... && go build ./... && go test ./...
 (cd web && npx tsc --noEmit -p .)
 ```
 
-SIP davranışına dokunduysanız laboratuvarı kaldırıp (`make lab-up`) `make test-routing` çalıştırın; API'ye dokunduysanız `make test-api`; çağrı yoluna dokunduysanız `make load CPS=200 CC=2000 DURATION=30`.
+If you touched SIP behaviour, bring up the lab (`make lab-up`) and run `make test-routing`; if you touched the API, `make test-api`; if you touched the call path, `make load CPS=200 CC=2000 DURATION=30`.
 
-## Güvenlik
+## Security
 
-Güvenlik açıklarını herkese açık hata kaydı olarak bildirmeyin; [`SECURITY.md`](SECURITY.md) içindeki yolu izleyin.
+Do not report security vulnerabilities as public issues; follow the process in [`SECURITY.md`](SECURITY.md).

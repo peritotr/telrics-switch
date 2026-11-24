@@ -5,13 +5,25 @@
 #
 #   ./install.sh --ip <address> [--advertised-ip <public address>] [--panel-domain <name>] [--sip-domain <name>] [--monitoring]
 #   ./install.sh --smoke        private Docker network, for trying it out
+#   ./install.sh --version <tag> ...   first fetch and check out that release
+#                               (from SOFTSWITCH_REPO, the public repository by default)
 #
 # Guide: docs/09-kurulum.md
 . "$(dirname "$0")/lib.sh"
 
 IP="" ADVERTISED="" DOMAIN="" SIP_DOMAIN_ARG="" SMOKE=0 MONITORING=0
+# --version: check the release out, then run its own install.sh with the
+# other options. The whole if is read before it runs, so the checkout may
+# rewrite this file.
+if [ "${1:-}" = "--version" ]; then
+  [ $# -ge 2 ] || die "--version needs a release tag"
+  checkout_release "$2"
+  shift 2
+  exec "$HERE/install.sh" "$@"
+fi
 while [ $# -gt 0 ]; do
   case $1 in
+    --version) die "--version must come first" ;;
     --ip) IP=$2; shift 2 ;;
     --advertised-ip) ADVERTISED=$2; shift 2 ;;
     --panel-domain) DOMAIN=$2; shift 2 ;;

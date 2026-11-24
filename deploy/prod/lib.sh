@@ -45,3 +45,54 @@ api_port() { sed -n 's/^API_PORT=//p' "$ENV_FILE" | tail -1; }
 # The management pipe appears once every module of the SIP core is up.
 sip_up() { dc exec -T opensips test -p /run/opensips/opensips_fifo; }
 api_up() { curl -fsS "http://127.0.0.1:$(api_port)/healthz"; }
+
+# ---- releases (ADR-0051) ----------------------------------------------------
+# The repository releases are fetched from: SOFTSWITCH_REPO from the
+# environment (a first install has no .env yet), then from .env, then the
+# public repository. A mirror or a fork goes there.
+DEFAULT_REPO=https://github.com/peritotr/telrics-switch.git
+repo_url() {
+  local u=${SOFTSWITCH_REPO:-}
+  [ -z "$u" ] && [ -f "$ENV_FILE" ] && u=$(get_env SOFTSWITCH_REPO)
+  echo "${u:-$DEFAULT_REPO}"
+}
+# The checkout's top directory; empty when this is not a git checkout (an
+# installation copied without .git: see "Sürümler" in docs/09-kurulum.md).
+checkout_top() { git -C "$HERE" rev-parse --show-toplevel 2>/dev/null || true; }
+# What the images are built as: the release tag when one is checked out,
+# otherwise the commit; "-dirty" when tracked files were changed.
+source_version() {
+  local v=""
+  [ -n "$(checkout_top)" ] && v=$(git -C "$HERE" describe --tags --always --dirty 2>/dev/null || true)
+  echo "${v:-dev}"
+}
+# Computed here, not taken from the environment: after upgrade.sh checks out
+# another release and runs that release's script, the value must be the new
+# one. The compose files pass it to the image builds.
+SOFTSWITCH_VERSION=$(source_version)
+export SOFTSWITCH_VERSION
+
+# checkout_release <tag>: fetches the tag from the release repository and
+# checks it out (detached HEAD). Refuses a name that is not a release tag, a
+# tag the repository does not have, a local tag that differs from the
+# repository's (git does not overwrite it), and changes to tracked files
+# (the checkout would lose them or stop half way). .env, certs/, backups/ and
+# monitoring/alertmanager.yml are not tracked and stay as they are.
+checkout_release() {
+  local tag=$1 top url commit
+  printf '%s' "$tag" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$' \
+    || die "$tag is not a release tag (vMAJOR.MINOR.PATCH)"
+  command -v git >/dev/null || die "git is not installed"
+  top=$(checkout_top)
+  [ -n "$top" ] || [ ! -e "$HERE/../../.git" ] || die "git does not accept $(cd "$HERE/../.." && pwd) as a checkout; git -C $HERE status says why (often: owned by another user, see safe.directory)"
+  [ -n "$top" ] || die "$(cd "$HERE/../.." && pwd) is not a git checkout; see \"Sürümler\" in docs/09-kurulum.md for the one-time move to one"
+  [ -z "$(git -C "$top" status --porcelain --untracked-files=no)" ] \
+    || die "tracked files were changed in $top (git -C $top status); undo or move them first"
+  url=$(repo_url)
+  echo "fetching $tag from $url"
+  git -C "$top" fetch --quiet --no-tags "$url" "refs/tags/$tag:refs/tags/$tag" \
+    || die "could not fetch $tag from $url (no such tag, no network, or a local tag of that name that differs)"
+  commit=$(git -C "$top" rev-parse --verify --quiet "refs/tags/$tag^{commit}") || die "$tag is not a commit"
+  git -C "$top" -c advice.detachedHead=false checkout --quiet --detach "$commit" || die "could not check out $tag"
+  echo "checked out $tag ($(git -C "$top" rev-parse --short HEAD))"
+}

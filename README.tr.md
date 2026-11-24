@@ -2,6 +2,8 @@
 
 [English](README.md) · **Türkçe**
 
+[![CI](https://github.com/peritotr/telrics-switch/actions/workflows/ci.yml/badge.svg)](https://github.com/peritotr/telrics-switch/actions/workflows/ci.yml)
+
 Toptan (wholesale) ses trafiği taşıyan operatörler için **Class 4 SIP anahtarlama platformu (softswitch)**: yönlendirme, ücretlendirme ve faturalama, yönetim API'si ve yönetim paneli tek üründe. SIP sinyalleşmesini [OpenSIPS](https://opensips.org/), sesi [rtpengine](https://github.com/sipwise/rtpengine) taşır; bütün iş mantığı onlarla yalnızca ağ üzerinden konuşan Go servislerindedir.
 
 Bu depo ürünün açık kaynak **Community** sürümüdür ([AGPL-3.0-only](LICENSE)): tek sunucuda, tek hesapla çalışan, tek başına kullanılabilir bir üründür. Belgeler Türkçedir ([`docs/`](docs/)).
@@ -127,13 +129,14 @@ Laboratuvar portları başka projelerle çakışmasın diye 56xxx/58xxx aralığ
 
 ## Üretim kurulumu
 
-Tek bir Linux sunucuya Docker Compose ile kurulur (`deploy/prod/`): `install.sh` sırları üretir, imajları sunucuda derler ve servisleri başlatır; `upgrade.sh`, `backup.sh` ve `restore.sh` yükseltme, yedekleme ve geri yükleme içindir. İsteğe bağlı olarak panel Caddy ile HTTPS üzerinden sunulur, SIP sertifikası kendiliğinden alınır, izleme (Prometheus, Alertmanager) eklenir. Adımlar, ayarlar, ağ katmanı koruması (örnek nftables kuralları) ve bilinen sınırlar: [`docs/09-kurulum.md`](docs/09-kurulum.md). Yukarıdaki "Durum" bölümündeki uyarı geçerlidir.
+Tek bir Linux sunucuya Docker Compose ile kurulur (`deploy/prod/`): `install.sh` sırları üretir, imajları sunucuda derler ve servisleri başlatır; `upgrade.sh`, `backup.sh` ve `restore.sh` yükseltme, yedekleme ve geri yükleme içindir. Sürümler `vMAJOR.MINOR.PATCH` diye etiketlenir ve notları [`CHANGELOG.md`](CHANGELOG.md)'den alınarak [GitHub Releases](https://github.com/peritotr/telrics-switch/releases) olarak yayımlanır; `./deploy/prod/upgrade.sh <etiket>` sürümü indirir, yedek alır ve ona geçer. İsteğe bağlı olarak panel Caddy ile HTTPS üzerinden sunulur, SIP sertifikası kendiliğinden alınır, izleme (Prometheus, Alertmanager) eklenir. Adımlar, ayarlar, ağ katmanı koruması (örnek nftables kuralları) ve bilinen sınırlar: [`docs/09-kurulum.md`](docs/09-kurulum.md). Yukarıdaki "Durum" bölümündeki uyarı geçerlidir.
 
 ## Testler
 
 | Komut | Kapsam |
 |---|---|
 | `make test` | Birim testleri; laboratuvar gerekmez |
+| `make ci` | Her gönderimde ve çekme isteğinde CI'ın yaptığı (laboratuvarsız): gofmt, vet, derleme, birim testleri; panelde tür denetimi, kataloglar, derleme |
 | `make test-engine` | route-engine, laboratuvar Redis'iyle |
 | `make test-api` | API uçtan uca, laboratuvar PostgreSQL'inde ayrı bir veritabanıyla |
 | `make test-openapi` | API tanımının Redocly denetimi |
@@ -143,7 +146,7 @@ Tek bir Linux sunucuya Docker Compose ile kurulur (`deploy/prod/`): `install.sh`
 | `make load CPS=<n> CC=<n>` | Yük testi; karar süresi p99 bütçesi dahil PASS/FAIL |
 | `make prod-smoke` | Tek sunucu kurulumu uçtan uca: kurulum, çağrı, çökme, yedek ve geri yükleme, yükseltme |
 
-Komutların tam listesi ve katkı kuralları: [`CONTRIBUTING.md`](CONTRIBUTING.md), [`Makefile`](Makefile).
+Komutların tam listesi ve katkı kuralları: [`CONTRIBUTING.tr.md`](CONTRIBUTING.tr.md), [`Makefile`](Makefile).
 
 ## Dizin yapısı
 
@@ -189,8 +192,8 @@ docs/            Belgeler (Türkçe)
 
 OpenSIPS (GPLv2) ve rtpengine (GPLv3) ayrı süreçlerdir; bu depodaki kod onlarla yalnızca ağ üzerinden konuşur, kodlarını içermez ve onlara bağlanmaz ([ADR-0009](docs/decisions/0009-gpl-bilesenlerle-yalnizca-ag.md)).
 
-Katkılar memnuniyetle karşılanır; ancak aynı kod Enterprise sürümünün de temeli olduğu için birleştirilmeden önce **katkı sözleşmesi (CLA)** imzalanmış olmalıdır. CLA metni ayrıca yayımlanacaktır; o zamana kadar çekme istekleri tartışılabilir ama birleştirilemez. Ayrıntı: [`CONTRIBUTING.md`](CONTRIBUTING.md).
+Katkılar memnuniyetle karşılanır; ancak aynı kod Enterprise sürümünün de temeli olduğu için birleştirilmeden önce **katkı sözleşmesi (CLA)** imzalanmış olmalıdır. CLA metni ayrıca yayımlanacaktır; o zamana kadar çekme istekleri tartışılabilir ama birleştirilemez. Ayrıntı: [`CONTRIBUTING.tr.md`](CONTRIBUTING.tr.md).
 
 ## Güvenlik
 
-Güvenlik açıklarını herkese açık hata kaydı olarak değil, [`SECURITY.md`](SECURITY.md) içindeki yolla özel olarak bildirin. SIP çekirdeğinin yönetim soketi, Redis ve NATS gibi bileşenler kimlik doğrulamasızdır ve özel ağ varsayımına dayanır; ayrıntı [`docs/09-kurulum.md`](docs/09-kurulum.md).
+Güvenlik açıklarını herkese açık hata kaydı olarak değil, [`SECURITY.tr.md`](SECURITY.tr.md) içindeki yolla özel olarak bildirin. SIP çekirdeğinin yönetim soketi, Redis ve NATS gibi bileşenler kimlik doğrulamasızdır ve özel ağ varsayımına dayanır; ayrıntı [`docs/09-kurulum.md`](docs/09-kurulum.md).

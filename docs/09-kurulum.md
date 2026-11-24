@@ -30,9 +30,13 @@ Bütün servisler `restart: unless-stopped` ile çalışır: çöken servis ve s
 
 ## İlk kurulum
 
+Sürümler açık deponun etiketleridir (`v0.1.0` …; liste ve notlar: https://github.com/peritotr/telrics-switch/releases). Depoyu o sürümde kopyalayın:
+
 ```bash
-git clone <depo adresi> softswitch && cd softswitch && git checkout <sürüm>
+git clone --branch v0.1.0 https://github.com/peritotr/telrics-switch.git /opt/softswitch && cd /opt/softswitch
 ```
+
+Kurulum dizini bir git kopyası olarak kalmalıdır: sonraki yükseltmeler (`upgrade.sh <sürüm>`) etiketi oradan indirir. Var olan bir kopyada `install.sh --version <sürüm> …` önce o sürümü indirip ona geçer, sonra kurar.
 
 ```bash
 ./deploy/prod/install.sh --ip <sunucunun adresi>
@@ -79,11 +83,12 @@ Betik `deploy/prod/.env` dosyasını oluşturur (yalnızca sahibi okuyabilir), v
 | `TRACE_KEEP_DAYS` | Çağrıların SIP iletilerinin kaç gün saklanacağı (varsayılan 7). Tam yükte diskteki en büyük kalem budur; boyut hesabı `docs/10-izleme.md`, "Çağrı izi" içinde |
 | `TRACE_TARGET` | Yazılmazsa SIP çekirdeği sinyalleşmeyi kurulumun kendi toplayıcısına kopyalar (çağrı izi açık). Boş bırakılırsa (`TRACE_TARGET=`) kopya gönderilmez, iz saklanmaz |
 | `HEP_TARGET` | Aynı kopyanın ayrıca gönderileceği dış HEP toplayıcısı (Homer), `adres:port`. Önceki sürümlerde izlemeyi açan tek ayar buydu; şimdi kendi toplayıcımıza ek olarak çalışır |
+| `HEP_IP` | SIP çekirdeğinin HEP kopyalarını gönderdiği soketin adresi. Boşsa: bütün toplayıcılar bu sunucudaysa (127.0.0.1) 127.0.0.1, değilse `SIP_IP`. Dış `HEP_TARGET` ile o toplayıcıya ulaşan iç adresinizi yazın; soket gelen paketi işlemez ama dinler (T-51) |
 | `MAIL_FROM`, `SMTP_URL` ya da `RESEND_API_KEY` | E-posta (isteğe bağlı; `PANEL_URL` de gerekir) |
 | `SECRET_KEY` | Panel kullanıcılarının iki adımlı doğrulama sırlarını ve sağlayıcılara giriş parolalarını (bağlantı ayarlarındaki "Sağlayıcıya giriş") veritabanında şifreleyen anahtar; API'ye ve motora (`route-engine`) aynı değerle verilir, çünkü parolayı çağrı sırasında motor okur. 64 onaltılık hane (`openssl rand -hex 32`). Kurulum üretir; eski bir kurulumda `upgrade.sh` ekler (daha önce açık saklanmış sırlar okunmaya devam eder). Boşsa sırlar açık saklanır. **Anahtarı değiştirmeyin ve `.env` ile birlikte yedekleyin:** anahtar olmadan şifreli sırlar okunamaz, o kullanıcılar kodla giremez ve bir yöneticinin (ya da API anahtarıyla sizin) iki adımlı doğrulamalarını sıfırlaması gerekir (`docs/06-api.md`, "İki adımlı doğrulama"); sağlayıcı parolalarının da panelden yeniden girilmesi gerekir (o zamana kadar o sağlayıcıların kimlik sorusu cevapsız kalır ve çağrılar sıradaki rotaya geçer) |
 | `AUDIT_RETENTION_DAYS` | Denetim kaydının kaç gün saklanacağı (varsayılan 365; `0` = hep sakla). Süresi dolan kayıtları API süreci saatte bir siler (`docs/06-api.md`, "Denetim kaydı") |
 | `FX_SOURCE`, `FX_URL` | Döviz kurlarının dış kaynaktan alınması (T-20, ADR-0036). Boş (varsayılan): bütün kurlar elle girilir. `ecb`: panelde kaynağı "ECB" seçilen kurlar Avrupa Merkez Bankası'nın günlük referans kurlarından, hesabın para birimine çevrilerek güncellenir; elle girilen kurlara dokunulmaz. API açılışta ve her gün 15:30 UTC'den sonra bir kez alır; API'nin `www.ecb.europa.eu`'ya HTTPS ile çıkabilmesi gerekir. Alınamazsa son kurlar kalır, panelde uyarı ve `ExchangeRatesNotFetched` alarmı çıkar. `FX_URL` aynı dosyanın başka bir adresidir (ayna, test); yalnızca `FX_SOURCE=ecb` ile (`docs/08-cagri-arayuzu.md`, "Kurların dış kaynaktan alınması") |
-| `TRUST_PROXY` | `1`: API'nin önünde `X-Forwarded-For` yazan bir ters vekil var; denetim kaydına vekilin değil çağıranın adresi yazılır. `https` profili böyle bir vekildir: `install.sh --domain` ile kurulumda kendiliğinden `1` olur; profili sonradan açtıysanız ya da kendi vekilinizi kullanıyorsanız elle yazın. API'ye doğrudan erişiliyorsa boş bırakın: başlık çağıranın yazdığı şey olur |
+| `TRUST_PROXY` | `1`: API'nin önünde `X-Forwarded-For` yazan bir ters vekil var; denetim kaydına vekilin değil çağıranın adresi yazılır. `https` profili böyle bir vekildir: `install.sh --panel-domain` ile kurulumda kendiliğinden `1` olur; profili sonradan açtıysanız ya da kendi vekilinizi kullanıyorsanız elle yazın. API'ye doğrudan erişiliyorsa boş bırakın: başlık çağıranın yazdığı şey olur |
 
 ### Kodek çevirisi
 
@@ -105,7 +110,7 @@ SIP çekirdeği sertifikasız açılmaz. Kurulum, `deploy/prod/certs/` içine **
 - **Kendiliğinden (`--sip-domain sip.ornek.com`):** panelin HTTPS vekili (Caddy) bu ad için de sertifika alır ve süresi dolmadan yeniler; `sip-cert` servisi Caddy'deki sertifikayı beş dakikada bir `certs/` ile karşılaştırır ve değiştiyse kopyalar. Ad bu sunucuya yönlenmiş, 80 ve 443 dışarıya açık olmalıdır (sertifika otoritesi sunucuyu bu portlardan doğrular). Panel bu adla da açılır.
 - **Elle:** sertifikayı (ara sertifikalarıyla birlikte) ve anahtarı `certs/opensips.crt` ve `certs/opensips.key` olarak koyun. Kendi yenileme aracınız (ör. certbot) aynı dosyaları güncelleyebilir.
 
-İki yolda da SIP çekirdeği **yeniden başlatılmaz**: dosyalar 30 saniyede bir denetlenir, değişen sertifika yüklenir, süren çağrılar düşmez. Anahtarıyla uyuşmayan ya da okunamayan sertifika yüklenmez ve eskisi kullanılmaya devam eder; ne olduğu `docker compose logs opensips | grep tls:` ile görülür. `TLS_CA_LIST` ve `TLS_CLIENT_CA` dosyaları da aynı biçimde izlenir.
+İki yolda da SIP çekirdeği **yeniden başlatılmaz**: dosyalar 30 saniyede bir denetlenir, değişen sertifika yüklenir, süren çağrılar düşmez. Anahtarıyla uyuşmayan ya da okunamayan sertifika yüklenmez ve eskisi kullanılmaya devam eder; ne olduğu `docker compose logs opensips | grep tls:` ile görülür. Her dosya (ara sertifikalarıyla zincir, anahtar, otorite listeleri) 512 KiB'tan küçük olmalıdır; büyüğü aynı biçimde reddedilir (T-50; önceki sürümlerde sınır 4 KiB'tı ve Let's Encrypt zinciri yüklenemiyordu, SIP çekirdeği o zincirle hiç açılmıyordu). `TLS_CA_LIST` ve `TLS_CLIENT_CA` dosyaları da aynı biçimde izlenir.
 
 Sertifikanın bitişine 14 günden az kalınca `SIPCertificateExpiring` alarmı çalar (`docs/10-izleme.md`): motor SIP çekirdeğinin TLS kapısına bağlanıp bitiş tarihini okur.
 
@@ -115,15 +120,21 @@ Sertifikanın bitişine 14 günden az kalınca `SIPCertificateExpiring` alarmı 
 
 **Yükseltme notu:** TLS ile gidilen sağlayıcıların sertifikasındaki ad artık denetlenir. Sunucu alanına IP adresi yazılmış ve sertifikası ada düzenlenmiş bir bağlantı, yükseltmeden sonra çağrı almaz; bağlantıda "Sertifikadaki ad" alanını doldurun (ya da geçici olarak `PEER_VERIFY=off`).
 
-## Yükseltme
+## Sürümler ve yükseltme
+
+Sürümler anlamsal sürümlemeye uyar: `vANA.ARA.YAMA` (ilk açık sürüm `v0.1.0`; ADR-0051). Yama sürümü yalnızca hata düzeltir; 1.0.0'a kadar ara sürüm de ayar ya da API değiştirebilir, değişiklikler sürüm notlarında "Upgrade notes" başlığındadır. Her sürümün notları depodaki `CHANGELOG.md`'dedir ve GitHub'daki sürüm sayfasında da yayımlanır.
+
+**Kurulu sürüm:** panelde menünün altında; API'de `GET /v1/session` cevabındaki `version`; her servisin ölçülerinde `softswitch_build_info{version=…}` (`docs/10-izleme.md`); sunucuda `git -C /opt/softswitch describe --tags`. İmajlar kurulum ve yükseltme betiklerinde kopyanın sürümüyle derlenir (`git describe --tags --always --dirty`; izlenen bir dosya elle değiştirilmişse sürüm `-dirty` ile biter).
+
+**Yükseltme** (`deploy/prod/` dizininde):
 
 ```bash
-git fetch && git checkout <yeni sürüm>
+./upgrade.sh v0.2.0
 ```
 
-```bash
-./deploy/prod/upgrade.sh
-```
+Betik şunları yapar: yedek alır (`backup.sh`), sürüm etiketini depodan indirir ve etiketin depoda gerçekten olduğunu denetler (yoksa, ağ yoksa ya da aynı adlı yerel etiket depodakinden farklıysa durur; o ana kadar hiçbir şey değişmemiştir), kopyayı o etikete geçirir, sonra **yeni sürümün kendi** `upgrade.sh`'ını çalıştırır: imajları derler, önce API'yi başlatır, sonra değişen diğer servisleri yeniden başlatır. Her geçiş, öncesinde alınan yedekle birlikte `upgrades.log` dosyasına yazılır; betik sonunda geri dönüş komutunu da yazar. İzlenen dosyalarda elle yapılmış değişiklik varsa betik başlamadan durur (`git status` ile görülür); `.env`, `certs/`, `backups/` ve `monitoring/alertmanager.yml` izlenmez, oldukları gibi kalır. Kendiliğinden yükseltme yoktur: betik çalıştırılmadıkça hiçbir şey indirilmez.
+
+Etiket almadan çalıştırılan `./upgrade.sh` eskisi gibi, kopyada o an ne varsa ona yükseltir (elle `git checkout` yapanlar için).
 
 Betik önce yedek alır, imajları derler (değişmeyen servis yeniden başlatılmaz), önce API'yi başlatır (API yeni şema adımlarını uygular; aynı anda başlayan iki servis sırayla bekler), sonra değişen diğer servisleri yeniden başlatır. SIP çekirdeğinin imajı değiştiyse süren çağrılar düşer; yükseltmeyi trafiğin az olduğu saatte yapın. Kesintisiz yükseltme ikinci sunucuyla mümkündür (A2).
 
@@ -133,7 +144,81 @@ Betik önce yedek alır, imajları derler (değişmeyen servis yeniden başlatı
 
 **Yükseltme notu (sınırlar iki yönü birlikte sayar, ADR-0042):** trunk'ın `max_calls`/`max_cps` sınırı artık trunk'ın yaptığı ve ona teslim edilen çağrıları birlikte sayar; müşterinin sınırı da müşterinin yaptığı ve trunk'larına teslim edilen çağrıları. İki yönün ayrı kapasitesine güvenen bir trunk ya da müşteri yükseltmeden sonra daha erken sınırlanır (ör. aynı anda 10 çağrı yapıp 10 çağrı alan, `max_calls = 10` olan trunk toplam 10'da kalır): bu sınırları yükseltmeden önce gözden geçirin. Teslim (bir uzantının `routing.ToTrunk` rotası) olmayan kurulumda davranış değişmez. Sayaçlar Redis'te kendiliğinden geçer: yeni motor açılırken eski `cc:s:<trunk>` kümelerindeki süren çağrıları `cc:t:<trunk>`'a katar ve eski kümeyi siler (günlükte "moved the counts of N trunks"); saniye sayaçları iki saniyede düşer. Yükseltme anında süren ve bir trunk'a teslim edilmiş çağrılar, bitene kadar hedef müşterinin sınırında görünmez. Şema ve `.env` değişmez; yükseltme sırası önemli değildir.
 
-Geri dönüş: şema adımlarının geri alma betiği yoktur. Eski sürüme dönmek için eski sürümü `checkout` edip yükseltmeden hemen önce alınan yedeği geri yükleyin; yükseltmeden sonra yazılan veriler kaybolur.
+### Geri dönüş
+
+**Şema adımları yalnızca ileri gider; geri alma betikleri yoktur.** Yeni sürümün API'si açılırken veritabanına yeni adımları uygular; eski sürümün kodu bu yeni şemayla çalışmayabilir (yeni sütunu, tetikleyiciyi tanımaz; kaldırılmış bir şeyi arar). Bu yüzden eski sürüme dönmek, veritabanını da yükseltmeden hemen önce alınan yedeğe döndürmek demektir:
+
+```bash
+./upgrade.sh v0.1.0 --restore backups/softswitch-<zaman>.dump
+```
+
+Betik önce o anki durumun da yedeğini alır, eski etikete geçer, eski sürümün imajlarını derler, sonra `restore.sh` ile veritabanını verilen yedeğe döndürür ve servisleri eski sürümle başlatır. Doğru yedek, yükseltme bitince betiğin yazdığı komutta ve `upgrades.log`'da yazılıdır. Sınırlar:
+
+- Yükseltmeden sonra yazılan her şey kaybolur: çağrı kayıtları, bakiye hareketleri, panelde yapılan değişiklikler, denetim kaydı. Süren çağrılar düşer, Redis boşaltılır. Kaybolan kayıtlar geri dönüşten önce alınan yedekte durur; ama o yedek yeni şemadadır, eski sürüme olduğu gibi yüklenemez, ancak elle ayıklanabilir.
+- Yalnızca bir sürüm geriye, o sürümden ayrılırken alınan yedekle dönülür. Yedeksiz geri dönüş (`./upgrade.sh <eski sürüm>` yalnız başına) şema değişmemişse çalışır, değişmişse eski API açılmayabilir ya da yanlış davranabilir; sürüm notunda "schema unchanged" yazmıyorsa yapmayın.
+- `.env`'e yeni sürümün eklediği ayarlar (ör. bir sır) kalır; eski sürüm onları yok sayar.
+- `v0.1.0`'dan eski bir sürüme bu yolla dönülemez (etiket yoktur).
+
+### Depo adresi
+
+Sürümler `.env`'deki `SOFTSWITCH_REPO` adresinden indirilir; boşsa açık depodan (https://github.com/peritotr/telrics-switch.git). Kendi aynanızı ya da çatalınızı kullanmak için adresini buraya yazın; `.env` henüz yokken (ilk kurulum) aynı adı ortam değişkeni olarak verin: `SOFTSWITCH_REPO=<adres> ./install.sh --version <sürüm> …`. Etiketler imzalı değildir; indirilen sürümün içeriğini doğrulamak isteyen, etiketin işaret ettiği commit'i (`git -C /opt/softswitch rev-parse v0.2.0^{commit}`) GitHub'daki sürüm sayfasındakiyle karşılaştırabilir.
+
+### Git'siz kurulumun bir kez taşınması
+
+Kurulum dizini git kopyası değilse (ör. `git archive` ile kopyalanmış) `upgrade.sh <sürüm>` "is not a git checkout" diyerek durur. Böyle bir kurulum bir kez, aşağıdaki adımlarla bir kopyaya taşınır. Seçilen yol, eski dizini olduğu gibi bırakıp yanına temiz bir kopya kurmaktır: yerinde `git init` yapmak, eski ağaçta kalan ve depoda artık olmayan dosyaları da bırakırdı; eski dizin taşımadan sonra da geri dönüş için durur. Veriler Docker birimlerindedir; birimlerin adı compose proje adıyla başlar ve proje adı (`.env`'de `COMPOSE_PROJECT_NAME` yoksa) dizinin adıdır, `prod`: iki kopyada da aynı olduğu için veriler yerinde kalır. Süren çağrılar düşer; trafiğin az olduğu saatte yapın.
+
+Aşağıda kurulum `/opt/softswitch`'tedir ve yeni sürüm `v0.1.0`'dır; kendi yolunuzu ve sürümünüzü yazın. Komutları kurulumu yapan kullanıcıyla çalıştırın.
+
+1. Yedek alın ve proje adını not edin:
+   ```bash
+   cd /opt/softswitch/deploy/prod && ./backup.sh
+   docker compose ls          # NAME sütunu: prod (ya da .env'deki COMPOSE_PROJECT_NAME)
+   ```
+   Yedek dosyasını, `.env`'i ve `certs/`'i sunucunun dışına da kopyalayın.
+2. Yeni kopyayı eskisinin yanına kurun:
+   ```bash
+   git clone --branch v0.1.0 https://github.com/peritotr/telrics-switch.git /opt/softswitch.new
+   ```
+3. Ayarları, sertifikaları ve yedekleri taşıyın (izinler korunur; `.env` yalnızca sahibince okunur kalmalıdır):
+   ```bash
+   cd /opt/softswitch/deploy/prod
+   cp -a .env certs /opt/softswitch.new/deploy/prod/
+   [ -d backups ] && cp -a backups /opt/softswitch.new/deploy/prod/
+   [ -f monitoring/alertmanager.yml ] && cp -a monitoring/alertmanager.yml /opt/softswitch.new/deploy/prod/monitoring/
+   ```
+   `.env`'de `CERTS_DIR` ya da `BACKUP_DIR` başka bir yere işaret ediyorsa onları da taşıyın ya da mutlak yol olarak bırakın.
+4. Servisleri durdurun ve dizinleri değiştirin. `down` kapları kaldırır, birimlere (verilere) dokunmaz. **`-v` eklemeyin: bütün veriyi siler.**
+   ```bash
+   cd /opt/softswitch/deploy/prod && docker compose down
+   mv /opt/softswitch /opt/softswitch.old && mv /opt/softswitch.new /opt/softswitch
+   ```
+   (Kaplar eski dizinin sertifika ve ayar dosyalarını bağlı tutar; `down` olmadan yeni dizinden başlatılan bir yükseltme, değişmeyen kapları eski dizine bağlı bırakırdı.)
+5. Veritabanını başlatıp yeni kopyayla yükseltin (yedek alır, imajları derler, önce API'yi başlatır):
+   ```bash
+   cd /opt/softswitch/deploy/prod && docker compose up -d postgres && ./upgrade.sh
+   ```
+6. Denetleyin: `docker compose ls` aynı proje adını, `docker compose ps` bütün servisleri çalışır gösterir; panel açılır ve menünün altında `v0.1.0` yazar; bir deneme çağrısı geçer. Zamanlayıcıdaki yedek satırı (`/opt/softswitch/deploy/prod/backup.sh`) aynı yolu gösterdiği için değişmez.
+7. Her şey yolundaysa birkaç gün sonra `/opt/softswitch.old`'u silin. O zamana kadar geri dönüş mümkündür; taşımadan sonra yazılan veriler kaybolur:
+   ```bash
+   cd /opt/softswitch/deploy/prod && docker compose down
+   mv /opt/softswitch /opt/softswitch.new && mv /opt/softswitch.old /opt/softswitch
+   cd /opt/softswitch/deploy/prod && docker compose build && docker compose up -d postgres
+   ./restore.sh backups/softswitch-<1. adımdaki zaman>.dump --yes
+   ```
+   İmajları yeniden derlemek şarttır: imaj adları proje adından gelir ve yeni kopyanın derledikleri eskilerin yerini almıştır. Veritabanı 1. adımdaki yedeğe döner, çünkü yeni sürüm şemayı ilerletmiş olabilir.
+
+Bundan sonraki yükseltmeler `./upgrade.sh <sürüm>` ile yapılır.
+
+### Sürüm yayımlama (bakımcılar)
+
+Açık depo, bakımcıların kaynak ağacından üretilir; sürümü hazırlayan betik (`tools/release.sh`) o ağaçtadır, açık depoda yoktur. Adımlar:
+
+1. `CHANGELOG.md`'de "Unreleased" altındakiler yeni sürümün başlığına taşınır (`## [0.2.0] - YYYY-AA-GG`, sondaki bağlantı satırıyla), `web/package.json`'daki sürüm aynı yapılır (`npm --prefix web version 0.2.0 --no-git-tag-version`), değişiklik `main`'e girer.
+2. `tools/release.sh v0.2.0` (yalnızca denetim için `--check`): `main`'de ve temiz olunduğunu, sürümün yeni ve sonuncusundan büyük olduğunu, değişiklik günlüğü bölümünü, panelin sürümünü ve İngilizce belgelerin güncelliğini denetler; açık ağacı dışa aktarır (kendi denetimleriyle), açık deponun yerel kopyasında "Release v0.2.0" commit'ini ve açıklamalı `v0.2.0` etiketini, kaynak ağacında da aynı adlı etiketi oluşturur, sürüm notlarını (değişiklik günlüğünün o bölümü) bir dosyaya yazar. **Hiçbir şey göndermez** ve GitHub'da sürüm oluşturmaz.
+3. Sahip onaylayınca betiğin yazdığı komutlar çalıştırılır: `git push origin main`, `git push origin v0.2.0` ve `gh release create v0.2.0 --repo peritotr/telrics-switch --verify-tag --title v0.2.0 --notes-file <notlar>`.
+4. CI etiket için de çalışır (`.github/workflows/ci.yml`); kırmızıysa sürüm duyurulmaz, düzeltme yeni bir yama sürümüyle çıkar (yayımlanmış etiket taşınmaz).
+
+CI her gönderimde ve çekme isteğinde laboratuvar gerektirmeyen denetimleri çalıştırır: `gofmt`, `go vet`, `go build`, `go test ./...` (PostgreSQL, Redis ya da ClickHouse isteyen testler adresleri verilmediğinde kendini atlar), panelde `npm ci`, tür denetimi, metin katalogları ve derleme. Yerelde aynısı: `make ci`. SIPp senaryoları (`make test-routing`), API'nin veritabanıyla uçtan uca testi (`make test-api`), yük testi ve kurulum duman testi (`make prod-smoke`) laboratuvar ister; CI'da yoktur, sürümden önce bakımcı çalıştırır.
 
 ## Yedekleme ve geri yükleme
 
@@ -171,7 +256,7 @@ Komutlar `deploy/prod/` dizininde çalıştırılır.
 make prod-smoke
 ```
 
-Aynı imajları özel bir Docker ağında (`docker-compose.bridge.yml`), ayrı bir proje adıyla ve kendi sertifika dizininde (`certs-smoke`) kurar ve şunları dener: kurulum, panelin HTTP ve HTTPS üzerinden sunulması, SIP adı için alınan sertifikanın (burada Caddy'nin kendi otoritesinden) zinciriyle birlikte ve yeniden başlatma olmadan SIP çekirdeğine geçmesi, motorun sırrının üretilmesi ve sırsız ya da yanlış sırlı isteğin reddedilmesi, gerçek bir çağrı, kaydı ve saklanan izi (iletiler ve pcap dosyası), SIP çekirdeğinde ölen bir sürecin ardından toparlanma ve bunun alarmı, yedek alma ve geri yükleme (ClickHouse'un yeniden kurulması dahil), yükseltme, sırrı olmayan bir kurulumun yükseltmede sır alması ve çağrıların sürmesi. Bittiğinde kurduğu her şeyi siler. Üretim sunucusu olmayan makinelerde (Docker Desktop dahil) çalışır; trafik taşımak için değildir.
+Aynı imajları özel bir Docker ağında (`docker-compose.bridge.yml`), ayrı bir proje adıyla ve kendi sertifika dizininde (`certs-smoke`) kurar ve şunları dener: kurulum, panelin HTTP ve HTTPS üzerinden sunulması, SIP adı için alınan sertifikanın (burada Caddy'nin kendi otoritesinden) zinciriyle birlikte ve yeniden başlatma olmadan SIP çekirdeğine geçmesi, motorun sırrının üretilmesi ve sırsız ya da yanlış sırlı isteğin reddedilmesi, gerçek bir çağrı, kaydı ve saklanan izi (iletiler ve pcap dosyası), SIP çekirdeğinde ölen bir sürecin ardından toparlanma ve bunun alarmı, yedek alma ve geri yükleme (ClickHouse'un yeniden kurulması dahil), yükseltme, sırrı olmayan bir kurulumun yükseltmede sır alması ve çağrıların sürmesi, kopyanın sürümünün API'de ve motorun ölçülerinde görünmesi. Bittiğinde kurduğu her şeyi siler. Üretim sunucusu olmayan makinelerde (Docker Desktop dahil) çalışır; trafik taşımak için değildir.
 
 ## Ağ katmanı koruması
 
@@ -205,6 +290,7 @@ Sunucunun ağındaki yerleşimde (`docker-compose.host.yml`) hepsi yalnızca 127
 | **2223/UDP** | **rtpengine'in denetim soketi** |
 | 2225/TCP | rtpengine'in ölçüleri |
 | **59060/UDP** | **Çağrı izi toplayıcısının HEP girişi** |
+| 9061/UDP | SIP çekirdeğinin HEP kopyalarını gönderdiği soket (`HEP_PORT`). Gelen HEP işlenmez (T-51); yine de yalnızca 127.0.0.1'de açılır. Sunucu dışında bir `HEP_TARGET` verilince `SIP_IP`'de açılır: `HEP_IP` ile o toplayıcıya bakan iç adrese alın ya da güvenlik duvarında kapalı tutun |
 | 56432, **56379**, **54222**, 58123/TCP | PostgreSQL, **Redis**, **NATS**, ClickHouse |
 | 59090, 59093, 59100/TCP | Prometheus, Alertmanager, node-exporter (`--monitoring`) |
 

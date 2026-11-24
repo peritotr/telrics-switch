@@ -20,6 +20,7 @@ services:
       SIP_METRICS: 127.0.0.1:8888
       TRACE_TARGET: ${TRACE_TARGET-127.0.0.1:59060}
       HEP_TARGET: ${HEP_TARGET:-}
+      HEP_IP: ${HEP_IP:-}
 
   rtpengine:
     network_mode: host

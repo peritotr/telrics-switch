@@ -131,6 +131,8 @@ export function useInvalidate() {
 
 export interface Session {
   edition: string
+  /** The release the API runs (e.g. v0.1.0; "dev…" for a development build). */
+  version?: string
   /** Whoever is signed in, a person or an API key; the role decides the rights. */
   key: { id: number; name: string; role: 'admin' | 'readonly' }
   /** Present when a person signed in with an e-mail address and a password. */

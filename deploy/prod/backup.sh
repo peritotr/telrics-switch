@@ -12,6 +12,9 @@ need_env
 DIR=${BACKUP_DIR:-$HERE/backups}
 mkdir -p "$DIR"; chmod 700 "$DIR"
 FILE="$DIR/softswitch-$(date -u +%Y%m%dT%H%M%SZ).dump"
+# Run right after the database was started (an upgrade of a stopped
+# installation), it waits for it a little instead of failing.
+wait_for "PostgreSQL" 60 dc exec -T postgres pg_isready -U softswitch -d softswitch
 # Custom format: compressed, and restorable table by table.
 dc exec -T postgres pg_dump -U softswitch -d softswitch -Fc > "$FILE.part"
 # A dump that cannot be listed is not a backup.

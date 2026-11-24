@@ -90,6 +90,19 @@ const coreRoutes: { path: string; element: ReactNode }[] = [
 
 const editions: Record<string, string> = { community: 'Community', enterprise: 'Enterprise' }
 
+/** The release this panel was built from (VITE_VERSION, set by the image build); "dev" otherwise. */
+const panelVersion: string = import.meta.env.VITE_VERSION || 'dev'
+
+/** The server's release, small, at the foot of the menu; the panel's own too when it differs (a stale tab after an upgrade). */
+function Version({ server }: { server?: string }) {
+  const shown = server || panelVersion
+  const both = server && server !== panelVersion
+  return <div className="mono tx3 ell" style={{ fontSize: 10.5 }}
+    title={both ? t('shell.panelVersion', { server, panel: panelVersion }) : undefined}>
+    {t('shell.version', { version: shown })}{both ? ' *' : ''}
+  </div>
+}
+
 function Clock() {
   const [now, setNow] = useState(() => new Date())
   useEffect(() => {
@@ -147,6 +160,7 @@ function Shell({ session, nav, routes, logout, topBar, lang }: { session: Sessio
             <span className="grow ell">{session.user ? '' : t('shell.apiKey')}{readonly ? t('shell.readonly') : t('shell.admin')}</span>
             <a onClick={logout}>{t('shell.logout')}</a>
           </div>
+          <Version server={session.version} />
         </div>
       </aside>
       <div className="main">

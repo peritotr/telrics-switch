@@ -24,6 +24,7 @@ deploy/compose/certs/
 deploy/prod/.env
 deploy/prod/certs/
 deploy/prod/backups/
+deploy/prod/upgrades.log
 deploy/prod/.env.smoke
 deploy/prod/backups-smoke/
 deploy/prod/certs-smoke/

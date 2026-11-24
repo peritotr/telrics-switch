@@ -14,7 +14,15 @@ if [ -n "${SIP_ADVERTISED_IP:-}" ]; then
   SIP_UDP_SOCKET="$SIP_UDP_SOCKET as $SIP_ADVERTISED_IP:$SIP_PORT"
   SIP_TLS_SOCKET="$SIP_TLS_SOCKET as $SIP_ADVERTISED_IP:$SIP_TLS_PORT"
 fi
-export SIP_REALM UDP_WORKERS TCP_WORKERS TLS_CERT TLS_KEY SIP_UDP_SOCKET SIP_TLS_SOCKET
+# The longest value the SIP core reads from its tables (db_text's
+# buffer_size, T-50): the TLS table holds whole files (certificate chain,
+# key, lists of authorities). 512 KiB takes a 4096-bit RSA certificate with
+# three intermediates and its key (under 12 KiB together) many times over,
+# and even the whole system bundle of authorities (~220 KiB) as TLS_CA_LIST;
+# it is taken from a process's own memory (OPENSIPS_PKG_MB) only while a
+# table is read. Not a setting: tls-table.sh refuses larger files.
+DB_TEXT_BUFFER=524288
+export SIP_REALM UDP_WORKERS TCP_WORKERS TLS_CERT TLS_KEY SIP_UDP_SOCKET SIP_TLS_SOCKET DB_TEXT_BUFFER
 mkdir -p /run/opensips
 # IPv6 (T-28): with SIP_IP6 the server listens on that address too, with
 # the same ports (and names SIP_ADVERTISED_IP6 in what it sends, when set).
@@ -47,9 +55,24 @@ export SIP_METRICS_IP SIP_METRICS_PORT
 : > /run/opensips/trace-call.cfg
 : > /run/opensips/trace-refused.cfg
 if [ -n "${TRACE_TARGET:-}${HEP_TARGET:-}" ]; then
+  # proto_hep sends from a socket of its own, which also listens (T-51).
+  # What arrives there is never acted on: proto_hep hands a received
+  # packet's SIP to the script only when a module asked for HEP (sipcapture,
+  # which must never be loaded here), and would then take the sender's
+  # address from the packet itself. It still parses what it gets, so the
+  # socket is kept off the public address: on 127.0.0.1 when every
+  # collector is on this host (production's own collector), otherwise on
+  # SIP_IP (a private network in the lab; with an outside HEP_TARGET, set
+  # HEP_IP to an address of this server facing that collector, or keep the
+  # port shut in the firewall).
+  if [ -z "${HEP_IP:-}" ]; then
+    HEP_IP=127.0.0.1
+    for target in ${TRACE_TARGET:-} ${HEP_TARGET:-}; do
+      case $target in 127.*) ;; *) HEP_IP=$SIP_IP ;; esac
+    done
+  fi
   cat > /run/opensips/trace-modules.cfg <<EOF
-# proto_hep sends from a socket of its own; nothing needs to reach this port.
-socket=hep_udp:$SIP_IP:${HEP_PORT:-9061}
+socket=hep_udp:$HEP_IP:${HEP_PORT:-9061}
 loadmodule "proto_hep.so"
 loadmodule "tracer.so"
 modparam("tracer", "trace_on", 1)

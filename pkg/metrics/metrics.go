@@ -11,12 +11,15 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"softswitch/core/pkg/version"
 )
 
 type series interface {
@@ -33,6 +36,16 @@ var (
 	mu       sync.Mutex
 	families = map[string]*family{}
 )
+
+// Every process that serves metrics says which release it runs, so that a
+// dashboard or an alert can tell an upgrade apart from a fault. Registered
+// here, once per process, because the services (and editions built on this
+// package) all import it while only some share a main.
+func init() {
+	NewGauge("softswitch_build_info", "The release this process was built from (always 1).",
+		func() (float64, bool) { return 1, true },
+		"version="+version.Get(), "goversion="+runtime.Version())
+}
 
 // register adds one series; labels are "key=value" pairs fixed for its life.
 func register(name, help, kind string, s series, labels []string) {

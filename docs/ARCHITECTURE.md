@@ -106,7 +106,7 @@ Betiğin yapısı (`sip/opensips/opensips.cfg`):
 | `failure_route[next]` | Deneme kesin hata verince | 401/407'ye bir kez digest cevabı; `failed` olayı; motor rota verdiyse yeni deneme, vermediyse medya oturumunu siler |
 | `route[hop]`, `local_route` | Çağrı içi istekler; SIP çekirdeğinin kendi BYE'ı (motor, azami süre, ACK beklemesi, aktarıcının `teardown`'ı) | NAT arkasındaki tarafa gerçek adresinden ulaşır; kendi BYE'ında aktarıcı oturumunu siler ve `ended` olayını gönderir |
 
-Kullanılan modüller ve rolleri: `tm` (işlem durumu, yeniden iletim, zamanlayıcılar), `dialog` (çağrı durumu, azami süre, dialog değerleri), `topology_hiding` (Via/Record-Route/Contact gizleme; `rr` yalnızca `uac` istediği için yüklüdür, Record-Route eklenmez), `uac` (From değişimi, sağlayıcıya digest), `auth` (arayana digest sorusu), `pike` (taşkın), `cachedb_local` (kaynak önbelleği), `rest_client` (motor), `rtpengine`, `tls_mgm` + `db_text` (sertifikalar), `nathelper` (yalnızca `nat_uac_test`), `mi_datagram` (A2), `mi_xmlrpc_ng` (A11: aktarıcının `teardown`'ı), `prometheus`, `statistics` (betiğin kendi sayaçları: `refer_refused`, §5.6; `media_refused`, §9); HEP ile iz kopyası (A9) için gereken satırları konteyner açılırken `deploy/images/opensips/run.sh` ekler (`TRACE_TARGET`, `HEP_TARGET`).
+Kullanılan modüller ve rolleri: `tm` (işlem durumu, yeniden iletim, zamanlayıcılar), `dialog` (çağrı durumu, azami süre, dialog değerleri), `topology_hiding` (Via/Record-Route/Contact gizleme; `rr` yalnızca `uac` istediği için yüklüdür, Record-Route eklenmez), `uac` (From değişimi, sağlayıcıya digest), `auth` (arayana digest sorusu), `pike` (taşkın), `cachedb_local` (kaynak önbelleği), `rest_client` (motor), `rtpengine`, `tls_mgm` + `db_text` (sertifikalar), `nathelper` (yalnızca `nat_uac_test`), `mi_datagram` (A2), `mi_xmlrpc_ng` (A11: aktarıcının `teardown`'ı), `prometheus`, `statistics` (betiğin kendi sayaçları: `refer_refused`, §5.6; `media_refused`, §9); HEP ile iz kopyası (A9) için gereken satırları konteyner açılırken `deploy/images/opensips/run.sh` ekler (`TRACE_TARGET`, `HEP_TARGET`; gönderen soket 127.0.0.1'de ya da `SIP_IP`'de, `HEP_IP`; gelen HEP işlenmez ve `sipcapture` yüklenmez: yüklense paketteki kaynak adresle betiğe girerdi, T-51).
 
 **Bu OpenSIPS sürümünde (3.6.10) yasak olan:** `async()` öncesinde isteği değiştiren her komut (`consume_credentials()`, `fix_nated_contact()`, `remove_hf()`, `append_hf()`, `subst*()` …). İsteği değiştirmek gerekiyorsa bunu devam rotasında (`route[authorized]`) yap. Betik `proxy_challenge()` ve `fix_nated_contact()` kullanmıyor (ADR-0014).
 
@@ -181,7 +181,7 @@ Taraf A            SIP çekirdeği                     R            Taraf B
 
 ### 5.3 BYE
 
-Üç kaynak vardır; üçünde de motor aynı `ended` olayını alır ve olay birden çok kez gelebilir.
+Dört kaynak vardır; hepsinde motor aynı `ended` olayını alır ve olay birden çok kez gelebilir.
 
 | Kaynak | Akış |
 |---|---|

@@ -77,7 +77,7 @@ Enterprise ve başka uzantılar aynı seçenekleri kendi kayıtlarında kullanı
 | İstek | Açıklama |
 |---|---|
 | `GET /v1/me` | Çağıranın hesap kaydı |
-| `GET /v1/session` | `{edition, key: {id, name, role}, account}`; kullanıcı oturumunda ayrıca `user: {id, name, email, role, two_step, two_step_setup_required}`. Panel oturumu bununla açar; `two_step_setup_required` doğruysa yalnızca kurulum ekranını gösterir. `account.require_two_step` hesabın ayarıdır |
+| `GET /v1/session` | `{edition, version, key: {id, name, role}, account}`; `version` API'nin çalışan sürümüdür (`v0.1.0`; geliştirme derlemesinde `dev…`; ADR-0051), açık bir uçta verilmez; kullanıcı oturumunda ayrıca `user: {id, name, email, role, two_step, two_step_setup_required}`. Panel oturumu bununla açar; `two_step_setup_required` doğruysa yalnızca kurulum ekranını gösterir. `account.require_two_step` hesabın ayarıdır |
 | `POST /v1/login` | `{"email", "password"}` → `{"token", "expires_at"}`. Hatalı giriş `401`; art arda beş hatalı denemeden sonra hesap 15 dakika kilitlenir (`429`). Kullanıcıda iki adımlı doğrulama açıksa belirteç yerine `{"two_step": true, "challenge", "expires_at"}` döner: `challenge` (`tsc_…`, 5 dakika geçerli) oturum değildir, yalnızca kodu sunma hakkıdır. Hesap iki adımı zorunlu kılmışsa ve kullanıcı kurmamışsa cevapta ayrıca `"two_step_setup_required": true` vardır: oturum yalnızca kuruluma açıktır |
 | `POST /v1/login/verify` | Girişin ikinci adımı: `{"challenge", "code"}` → `{"token", "expires_at"}`. `code` uygulamadaki 6 haneli kod ya da bir yedek koddur. Hatalı kod `401` ve hatalı parola gibi kilide sayılır; süresi dolmuş ya da kullanılmış `challenge` `410`; kilitli hesap `429` |
 | `POST /v1/logout` | Oturumu sonlandırır |

@@ -123,7 +123,7 @@ services:
   # Stores the signalling the SIP core copies to it; the API reads a call's
   # trace from what it wrote to ClickHouse.
   trace-collector:
-    build: { context: ../.., dockerfile: deploy/images/go/Dockerfile, args: { CMD: trace-collector } }
+    build: { context: ../.., dockerfile: deploy/images/go/Dockerfile, args: { CMD: trace-collector, VERSION: "${SOFTSWITCH_VERSION:-dev}" } }
     environment:
       CLICKHOUSE_URL: http://softswitch:lab-only@172.30.0.32:8123/softswitch
       HEP_LISTEN: 172.30.0.36:9060
@@ -159,7 +159,7 @@ services:
       lab6: { ipv6_address: "fd30::21", interface_name: eth1 }
 
   route-engine:
-    build: { context: ../.., dockerfile: deploy/images/go/Dockerfile, args: { CMD: route-engine } }
+    build: { context: ../.., dockerfile: deploy/images/go/Dockerfile, args: { CMD: route-engine, VERSION: "${SOFTSWITCH_VERSION:-dev}" } }
     <<: *ulimits
     env_file: [./lab.env]
     environment: &services-env
@@ -209,7 +209,7 @@ services:
 
   # Applies the schema on start, then prices call legs from the queue.
   rater:
-    build: { context: ../.., dockerfile: deploy/images/go/Dockerfile, args: { CMD: rater } }
+    build: { context: ../.., dockerfile: deploy/images/go/Dockerfile, args: { CMD: rater, VERSION: "${SOFTSWITCH_VERSION:-dev}" } }
     environment:
       <<: *services-env
       METRICS_LISTEN: 0.0.0.0:58092

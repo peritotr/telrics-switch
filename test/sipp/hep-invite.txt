@@ -1,0 +1,19 @@
+INVITE sip:905551112233@172.30.0.10:5060 SIP/2.0
+Via: SIP/2.0/UDP 172.30.0.21:5060;branch=z9hG4bK__ID__
+From: <sip:5551000@172.30.0.21>;tag=__ID__
+To: <sip:905551112233@172.30.0.10>
+Call-ID: __ID__
+CSeq: 1 INVITE
+Contact: <sip:5551000@172.30.0.21:5060>
+Max-Forwards: 70
+Content-Type: application/sdp
+Content-Length: 129
+
+v=0
+o=- 1 1 IN IP4 172.30.0.21
+s=-
+c=IN IP4 172.30.0.21
+t=0 0
+m=audio 40000 RTP/AVP 0 8
+a=rtpmap:0 PCMU/8000
+a=rtpmap:8 PCMA/8000

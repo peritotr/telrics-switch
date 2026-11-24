@@ -4,6 +4,7 @@
 - **Tarih:** 2026-11-24
 - **Karar veren:** Karar, 2026-11-24
 - **Yerini aldığı:** ADR-0023'ün "Arayüz Türkçedir" sonucu (diğer sonuçları geçerli)
+- **Kısmen yerini alan:** ADR-0050 ("`docs/` Türkçe kalır" sonucu: kullanıcıya dönük belgelerin İngilizcesi `docs/en/` içindedir)
 
 ## Bağlam
 

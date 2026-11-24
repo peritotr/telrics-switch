@@ -340,8 +340,15 @@ BOOT=$(docker inspect -f '{{.State.StartedAt}}' softswitch-lab-opensips-1)
 OLD=$(served)
 cp "$CERTS/opensips.crt" "$CERTS/opensips.crt.keep"
 # A run that is cut short must not leave the lab with a certificate the SIP
-# core cannot start with.
-trap '[ -f "$CERTS/opensips.crt.keep" ] && mv "$CERTS/opensips.crt.keep" "$CERTS/opensips.crt"' EXIT
+# core cannot start with (nor with the key of another).
+cert_back() {
+  local f
+  for f in opensips.crt opensips.key; do
+    if [ -f "$CERTS/$f.keep" ]; then mv "$CERTS/$f.keep" "$CERTS/$f"; fi
+  done
+  rm -rf "$CERTS/big"
+}
+trap cert_back EXIT
 cp "$CERTS/vendor.crt" "$CERTS/opensips.crt" # a certificate, but not this key's
 sleep 8
 check renew "mismatched certificate is not loaded" "$(served)" "$OLD"
@@ -365,6 +372,55 @@ check renew "calls go on with the new certificate, both sides" $? 0
 mv "$CERTS/opensips.crt.keep" "$CERTS/opensips.crt"
 sleep 8
 check renew "original certificate is back" "$(served)" "$OLD"
+
+# 7c (T-50). A public authority's certificate comes with its intermediates:
+#     a 4096-bit RSA one with two of them is over 5 KiB, more than the 4 KiB
+#     the SIP core's table reader took by default (the table could then be
+#     neither reloaded nor read at start). Such a chain is loaded without a
+#     restart and served whole, and the SIP core also starts with it. A file
+#     larger than the reader takes is refused with a message and the
+#     certificate in use stays.
+mkdir -p "$CERTS/big"
+chain() { # chain <name> <signer> <extensions>: a 4096-bit RSA certificate signed by <signer>
+  openssl req -newkey rsa:4096 -nodes -subj "/CN=$1.lab.test" -keyout "$CERTS/big/$1.key" -out "$CERTS/big/$1.csr" 2>/dev/null
+  printf '%s\n' "$3" > "$CERTS/big/$1.ext"
+  openssl x509 -req -in "$CERTS/big/$1.csr" -CA "$CERTS/$2.crt" -CAkey "$CERTS/$2.key" -CAcreateserial -days 30 -extfile "$CERTS/big/$1.ext" -out "$CERTS/big/$1.crt" 2>/dev/null
+}
+chain int1 ca 'basicConstraints=critical,CA:true'
+chain int2 big/int1 'basicConstraints=critical,CA:true'
+chain leaf big/int2 'subjectAltName=DNS:opensips.lab.test,IP:172.30.0.10'
+cat "$CERTS/big/leaf.crt" "$CERTS/big/int2.crt" "$CERTS/big/int1.crt" > "$CERTS/big/opensips.crt"
+cp "$CERTS/big/leaf.key" "$CERTS/big/opensips.key"
+chmod 644 "$CERTS/big/"*.key # read inside the lab containers, which run as other users
+BIG=$(openssl x509 -in "$CERTS/big/leaf.crt" -noout -serial)
+check bigcert "the chain is larger than 4 KiB" "$(awk -v n="$(wc -c < "$CERTS/big/opensips.crt")" 'BEGIN { print (n > 4096) ? "yes" : "no" }')" yes
+cp "$CERTS/opensips.crt" "$CERTS/opensips.crt.keep"
+cp "$CERTS/opensips.key" "$CERTS/opensips.key.keep"
+cp "$CERTS/big/opensips.key" "$CERTS/opensips.key"
+cp "$CERTS/big/opensips.crt" "$CERTS/opensips.crt"
+sleep 8
+check bigcert "the chain is served after a reload" "$(served)" "$BIG"
+check bigcert "SIP core was not restarted" "$(docker inspect -f '{{.State.StartedAt}}' softswitch-lab-opensips-1)" "$BOOT"
+check bigcert "the intermediates are sent: verified against the lab's authority alone" \
+  "$("${COMPOSE[@]}" exec -T sipp-uas-tls sh -c "timeout 5 openssl s_client -connect 172.30.0.10:5061 -CAfile /work/certs/ca.crt -verify_return_error </dev/null 2>/dev/null | grep -c 'Verify return code: 0 (ok)'")" 1
+UAC_TARGET=172.30.0.10:5061 uac bigcert uac.xml 975551112233 "" -d 1000 $TLS
+check bigcert "a call over TLS with the chain" $? 0
+#     Started afresh with the chain (a container of its own, without a
+#     network: the lab's SIP core is not touched).
+FRESH=$(docker run -d --network none -v "$CERTS:/etc/opensips-tls:ro" -v "$ROOT/sip/opensips:/etc/opensips:ro" --tmpfs /run/opensips \
+  -e SIP_IP=127.0.0.2 -e ENGINE_URL=http://127.0.0.1:9 -e MI_SOCKET=127.0.0.1:8899 -e RTP_CONTROL=127.0.0.1:2223 -e SIP_METRICS=127.0.0.1:8888 \
+  -e TLS_CERT=/etc/opensips-tls/big/opensips.crt -e TLS_KEY=/etc/opensips-tls/big/opensips.key -e ENGINE_TOKEN=lab-t50 softswitch-lab-opensips)
+sleep 6
+check bigcert "a SIP core started with the chain serves it" "$(docker exec "$FRESH" sh -c 'timeout 5 openssl s_client -connect 127.0.0.2:5061 </dev/null 2>/dev/null | openssl x509 -noout -serial')" "$BIG"
+docker rm -f "$FRESH" >/dev/null
+{ cat "$CERTS/big/leaf.crt"; for i in $(seq 400); do cat "$CERTS/big/int1.crt"; done; } > "$CERTS/opensips.crt"
+SINCE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+sleep 8
+check bigcert "a file larger than the SIP core reads is refused, with a message" "$(docker logs --since "$SINCE" softswitch-lab-opensips-1 2>&1 | grep -c 'the SIP core reads files of less than' | some)" yes
+check bigcert "and the certificate in use stays" "$(served)" "$BIG"
+cert_back
+sleep 8
+check bigcert "original certificate is back" "$(served)" "$OLD"
 
 # 7d. Weights. Three connections at one price with weights 3, 1 and 0 share
 #     sixty calls: the heavier carries more, the lighter some, and the one
@@ -578,7 +634,7 @@ trace_cleanup() {
   sql -c "delete from api_keys where name like 'trace scenario%'; delete from resellers where name = 'trace scenario'" >/dev/null 2>&1
   rm -rf "$TMP"
 }
-trap '[ -f "$CERTS/opensips.crt.keep" ] && mv "$CERTS/opensips.crt.keep" "$CERTS/opensips.crt"; trace_cleanup' EXIT
+trap 'cert_back; trace_cleanup' EXIT
 sql -c "insert into resellers (name) values ('trace scenario');
         insert into api_keys (reseller_id, name, key_hash) values
           ($ROOT_ID, 'trace scenario root', sha256('$RUN-root'::bytea)),
@@ -743,7 +799,7 @@ check trunk "legs to a vendor name no trunk" "$(sql -c "select count(*), count(d
 NAT_TRUNK=$(trunk_id lab-nat)
 NAT_SETTINGS=$(sql -c "select max_calls || ' ' || codecs::text from client_trunks where id = $NAT_TRUNK")
 nat_back() { sql -c "update client_trunks set max_calls = ${NAT_SETTINGS%% *}, codecs = '${NAT_SETTINGS#* }' where id = $NAT_TRUNK" >/dev/null; reload; }
-trap '[ -f "$CERTS/opensips.crt.keep" ] && mv "$CERTS/opensips.crt.keep" "$CERTS/opensips.crt"; trace_cleanup; nat_back' EXIT
+trap 'cert_back; trace_cleanup; nat_back' EXIT
 sql -c "update client_trunks set max_calls = 1, codecs = '{PCMA}' where id = $NAT_TRUNK" >/dev/null
 reload
 check trklimit "a second call while the trunk has its one: refused, the PBX offered PCMA alone" \
@@ -767,7 +823,7 @@ for _ in 1 2 3 4 5 6 7 8 9 10; do [ "$(trunk_left trklimit)" = 0 ] && break; sle
 check trklimit "nothing left in the state store, the trunk's count included" "$(trunk_left trklimit) $("${COMPOSE[@]}" exec -T redis redis-cli zcard "cc:t:$NAT_TRUNK" | tr -d '\r')" "0 0"
 check trklimit "the trunk takes a call again" "$(nat to_trunk $RUN-trkfree 89885551112233 plain caller)" "caller=0 pbx=0"
 nat_back
-trap '[ -f "$CERTS/opensips.crt.keep" ] && mv "$CERTS/opensips.crt.keep" "$CERTS/opensips.crt"; trace_cleanup' EXIT
+trap 'cert_back; trace_cleanup' EXIT
 check trklimit "the trunk's settings are back" "$(sql -c "select max_calls || ' ' || codecs::text from client_trunks where id = $NAT_TRUNK")" "$NAT_SETTINGS"
 
 #     The limits of a trunk and of a client count the calls they place and
@@ -783,7 +839,7 @@ check trklimit "the trunk's settings are back" "$(sql -c "select max_calls || ' 
 NAT_CLIENT=$(sql -c "select client_id from client_trunks where id = $NAT_TRUNK")
 NAT_LIMITS=$(sql -c "select t.max_calls || ' ' || c.max_calls from client_trunks t join clients c on c.id = t.client_id where t.id = $NAT_TRUNK")
 both_back() { sql -c "update client_trunks set max_calls = ${NAT_LIMITS%% *} where id = $NAT_TRUNK; update clients set max_calls = ${NAT_LIMITS#* } where id = $NAT_CLIENT" >/dev/null; reload; }
-trap '[ -f "$CERTS/opensips.crt.keep" ] && mv "$CERTS/opensips.crt.keep" "$CERTS/opensips.crt"; trace_cleanup; both_back' EXIT
+trap 'cert_back; trace_cleanup; both_back' EXIT
 codes() { sql -c "select coalesce(string_agg(sip_code::text, ',' order by leg), '-') from cdrs where call_id like '$RUN-$1-%'"; } # codes <case>: the legs' answers
 sql -c "update client_trunks set max_calls = 1 where id = $NAT_TRUNK" >/dev/null
 reload
@@ -800,7 +856,7 @@ nat_client_left() { "${COMPOSE[@]}" exec -T redis redis-cli zrange "cc:c:$NAT_CL
 check bothways "nothing left in the state store, the counts of the trunk and of its client included" \
   "$(trunk_left bothways) $(trunk_left bothcl) $(nat_client_left)" "0 0 0"
 both_back
-trap '[ -f "$CERTS/opensips.crt.keep" ] && mv "$CERTS/opensips.crt.keep" "$CERTS/opensips.crt"; trace_cleanup' EXIT
+trap 'cert_back; trace_cleanup' EXIT
 check bothways "the limits are back" "$(sql -c "select t.max_calls || ' ' || c.max_calls from client_trunks t join clients c on c.id = t.client_id where t.id = $NAT_TRUNK")" "$NAT_LIMITS"
 
 #     A trunk registered over TLS (T-07). It is reached through the
@@ -1410,7 +1466,7 @@ relay_back() { # relay_back: the relay with all its ports, answering; false if n
   done
   return 1
 }
-trap '[ -f "$CERTS/opensips.crt.keep" ] && mv "$CERTS/opensips.crt.keep" "$CERTS/opensips.crt"; trace_cleanup; relay_back' EXIT
+trap 'cert_back; trace_cleanup; relay_back' EXIT
 FAILED_EVENTS=$(event_count failed)
 ENDED_EVENTS=$(event_count ended)
 REFUSED_MEDIA=$(media_refused)
@@ -1468,7 +1524,7 @@ for c in nmports nmdown nmdown2 nmlate; do
 done
 relay_back
 check nomedia "the relay is back: calls go through it again" $? 0
-trap '[ -f "$CERTS/opensips.crt.keep" ] && mv "$CERTS/opensips.crt.keep" "$CERTS/opensips.crt"; trace_cleanup' EXIT
+trap 'cert_back; trace_cleanup' EXIT
 
 # 7s. Reservations past the first step (T-03, ADR-0005), with the default
 #     RESERVE_SEC (60). Two calls at once, with audio all along so the
@@ -1504,7 +1560,7 @@ upto() { # upto <seconds> <shell condition>: waits until it holds; false if it n
 settle
 BALANCES=$(sql -F ' ' -c "select (select balance from clients where id = $LAB_CLIENT), (select balance from vendors where id = $VENDOR_S)")
 EXTENDED=$(extended); CUT=$(cuts)
-trap '[ -f "$CERTS/opensips.crt.keep" ] && mv "$CERTS/opensips.crt.keep" "$CERTS/opensips.crt"; trace_cleanup; "${COMPOSE[@]}" unpause rater >/dev/null 2>&1' EXIT
+trap 'cert_back; trace_cleanup; "${COMPOSE[@]}" unpause rater >/dev/null 2>&1' EXIT
 conn reservation $RUN-rslong $RUN-rsshort > "$TMP/reservation.out" &
 RESERVATION=$!
 upto 20 '[ -n "$(held_of rsshort $RS_CLIENT)" ]'
@@ -1524,7 +1580,7 @@ check reserve "the long call lasts; the short one is ended by the switch on both
 upto 5 '[ "$(held_of rslong $LAB_CLIENT)" != 60000 ]'
 HELD_END=$(held_of rslong $LAB_CLIENT)
 "${COMPOSE[@]}" unpause rater >/dev/null 2>&1
-trap '[ -f "$CERTS/opensips.crt.keep" ] && mv "$CERTS/opensips.crt.keep" "$CERTS/opensips.crt"; trace_cleanup' EXIT
+trap 'cert_back; trace_cleanup' EXIT
 for c in rslong rsshort; do
   client=$LAB_CLIENT; [ $c = rsshort ] && client=$RS_CLIENT
   upto 10 '[ "$(left_of $c $client)" = 0 ]'
@@ -1778,6 +1834,40 @@ fi
 check trace "collector: stored what it received during the run, dropped nothing" "$(echo "$TRACE_BEFORE $(trace_counts)" | awk '{ r = $4 - $1; s = $5 - $2; d = $6 - $3; print (r > 0 && r == s && d == 0) ? "yes" : "no: received " r ", stored " s ", dropped " d }')" yes
 trace_cleanup
 trap - EXIT
+
+# 11. HEP sent to the SIP core (T-51). The socket the copies leave from also
+#     listens. A packet to it that carries an INVITE and claims to come from
+#     a trunk's address (172.30.0.21, known by its address alone) is thrown
+#     away: the engine is not asked, nothing is recorded or answered. The
+#     socket is on the lab's private address; in production, whose collector
+#     is on the same host, on 127.0.0.1.
+authorized() { engine http://127.0.0.1:58090/v1/stats | sed 's/.*"authorize":{"count":\([0-9]*\).*/\1/'; }
+ASKED_BEFORE=$(authorized)
+SINCE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+HEP_BACK=$("${COMPOSE[@]}" run --rm -T --entrypoint sh sipp-uac -c \
+  "ip addr add 172.30.0.107/24 dev eth0 && sed 's/__ID__/$RUN-hep-1/g' /work/test/sipp/hep-invite.txt > /tmp/m && HEP_FROM=172.30.0.107 perl /work/test/sipp/hep-send.pl 172.30.0.10:9061 172.30.0.21:5060 172.30.0.10:5060 /tmp/m" 2>/dev/null)
+settle
+check hepin "the SIP core received it and threw it away" "$(docker logs --since "$SINCE" softswitch-lab-opensips-1 2>&1 | grep -c 'hep_udp_read_req: failed to run hep callbacks')" 1
+check hepin "the engine was not asked" "$(authorized)" "$ASKED_BEFORE"
+check hepin "nothing recorded, nothing answered" "$(sql -c "select count(*) from cdrs where call_id = '$RUN-hep-1'")/$HEP_BACK" "0/"
+# hep_socket <container>: the addresses (hexadecimal, as the kernel lists
+# them) of the SIP core's sockets on HEP's port 9061 (0x2365).
+hep_socket() { docker exec "$1" awk 'NR > 1 && $2 ~ /:2365$/ { print $2 }' /proc/net/udp | sort -u | tr '\n' ' '; }
+check hepin "the lab: on the private address only" "$(hep_socket softswitch-lab-opensips-1)" "0A001EAC:2365 "
+#     Where the socket goes, in containers of their own without a network
+#     (SIP_IP 127.0.0.2): every collector on this host, as production's own;
+#     one elsewhere (HEP_TARGET); an address given (HEP_IP).
+hep_sip_core() {
+  docker run -d --network none -v "$CERTS:/etc/opensips-tls:ro" -v "$ROOT/sip/opensips:/etc/opensips:ro" --tmpfs /run/opensips \
+    -e SIP_IP=127.0.0.2 -e ENGINE_URL=http://127.0.0.1:9 -e MI_SOCKET=127.0.0.1:8899 -e RTP_CONTROL=127.0.0.1:2223 -e SIP_METRICS=127.0.0.1:8888 \
+    -e ENGINE_TOKEN=lab-t51 -e TRACE_TARGET=127.0.0.1:59060 "$@" softswitch-lab-opensips
+}
+LOCAL=$(hep_sip_core); AWAY=$(hep_sip_core -e HEP_TARGET=192.0.2.1:9060); GIVEN=$(hep_sip_core -e HEP_TARGET=192.0.2.1:9060 -e HEP_IP=127.0.0.3)
+sleep 6
+check hepin "collectors on this host: on 127.0.0.1" "$(hep_socket "$LOCAL")" "0100007F:2365 "
+check hepin "a collector elsewhere: on SIP_IP" "$(hep_socket "$AWAY")" "0200007F:2365 "
+check hepin "HEP_IP given: there" "$(hep_socket "$GIVEN")" "0300007F:2365 "
+docker rm -f "$LOCAL" "$AWAY" "$GIVEN" >/dev/null
 
 # No worker of the SIP core may have died along the way. A worker that
 # frees memory twice aborts only seconds after the call that caused it, so

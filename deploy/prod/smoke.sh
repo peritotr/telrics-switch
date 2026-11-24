@@ -39,6 +39,9 @@ check "install: API answers" "$(curl -fsS -o /dev/null -w '%{http_code}' http://
 check "install: panel is served" "$(curl -fsS http://127.0.0.1:58180/ | grep -c '<div id="root"')" 1
 KEY=$(sed -n 's/^BOOTSTRAP_API_KEY=//p' "$ENV_FILE")
 check "install: first API key works" "$(curl -fsS -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $KEY" http://127.0.0.1:58180/v1/clients)" 200
+# The release the checkout is (lib.sh) is what the services were built as.
+check "version: the API reports the checkout's" "$(curl -fsS -H "Authorization: Bearer $KEY" http://127.0.0.1:58180/v1/session | python3 -c 'import json,sys; print(json.load(sys.stdin)["version"])')" "$SOFTSWITCH_VERSION"
+check "version: in the engine's metrics" "$(dc exec -T caddy wget -q -O - http://172.30.8.40:58090/metrics 2>/dev/null | grep -c "^softswitch_build_info{version=\"$SOFTSWITCH_VERSION\"")" 1
 # The audit log: a change made through the API is recorded with who made it.
 # The installer made the key that seals two-step sign-in secrets.
 api_json() { curl -fsS -o /dev/null -w '%{http_code}' -X "$1" -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' ${3:+-d "$3"} "http://127.0.0.1:58180$2"; }

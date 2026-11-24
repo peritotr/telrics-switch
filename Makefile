@@ -4,9 +4,19 @@ CPS ?= 50
 CC ?= 1000
 DURATION ?= 60
 
-.PHONY: lab-build lab-up lab-down lab-logs test test-api test-openapi bench-snapshot test-engine test-routing test-journal test-reports test-archive test-mail seed-user lab-seed api-run seed panel-install panel-dev panel-build test-call load prod-smoke test-nft
+.PHONY: lab-build lab-up lab-down lab-logs test ci ci-go ci-web test-api test-openapi bench-snapshot test-engine test-routing test-journal test-reports test-archive test-mail seed-user lab-seed api-run seed panel-install panel-dev panel-build test-call load prod-smoke test-nft
 
 PG := postgres://softswitch:lab-only@127.0.0.1:56432
+
+# The release the binaries and the panel report (pkg/version, ADR-0051):
+# the tag of the checkout, or its commit, "-dirty" with uncommitted changes.
+# The compose files pass it to the image builds; deploy/prod/lib.sh does the
+# same for installations.
+ifndef SOFTSWITCH_VERSION
+SOFTSWITCH_VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+endif
+export SOFTSWITCH_VERSION
+LDFLAGS := -X softswitch/core/pkg/version.Version=$(SOFTSWITCH_VERSION)
 
 lab-build:
 	./deploy/compose/certs.sh
@@ -30,6 +40,19 @@ lab-seed:
 
 test:
 	go test ./...
+
+# What the public repository's CI runs (.github/workflows/ci.yml), none of
+# it needing the lab. ci-web reinstalls web/node_modules from the lock file.
+ci: ci-go ci-web
+
+ci-go:
+	@out=$$(gofmt -l cmd pkg db); if [ -n "$$out" ]; then echo "gofmt would change:"; echo "$$out"; exit 1; fi
+	go vet ./...
+	go build ./...
+	go test ./...
+
+ci-web:
+	cd web && npm ci && npx tsc --noEmit -p . && npm run check-i18n && npm run build
 
 # API integration tests against the lab PostgreSQL (a separate database that
 # the test wipes on every run).
@@ -96,7 +119,7 @@ test-archive:
 
 # The engine's token is the lab's (deploy/compose/lab.env).
 api-run:
-	DATABASE_URL=$(PG)/softswitch ENGINE_URL=http://127.0.0.1:58090 ENGINE_TOKEN=$$(sed -n 's/^ENGINE_TOKEN=//p' deploy/compose/lab.env) CLICKHOUSE_URL=http://softswitch:lab-only@127.0.0.1:58123/softswitch SMTP_URL=smtp://127.0.0.1:58026 MAIL_FROM="Telrics Switch <no-reply@lab.example.test>" PANEL_URL=http://127.0.0.1:58081 BOOTSTRAP_API_KEY=$${BOOTSTRAP_API_KEY:?set BOOTSTRAP_API_KEY} go run ./cmd/api
+	DATABASE_URL=$(PG)/softswitch ENGINE_URL=http://127.0.0.1:58090 ENGINE_TOKEN=$$(sed -n 's/^ENGINE_TOKEN=//p' deploy/compose/lab.env) CLICKHOUSE_URL=http://softswitch:lab-only@127.0.0.1:58123/softswitch SMTP_URL=smtp://127.0.0.1:58026 MAIL_FROM="Telrics Switch <no-reply@lab.example.test>" PANEL_URL=http://127.0.0.1:58081 BOOTSTRAP_API_KEY=$${BOOTSTRAP_API_KEY:?set BOOTSTRAP_API_KEY} go run -ldflags "$(LDFLAGS)" ./cmd/api
 
 # Demo data for the panel. Start the API with the lab key first:
 #   set -a; . test/seed/dev.env; set +a; make api-run
@@ -112,7 +135,7 @@ panel-dev:
 
 # Builds web/dist; the API serves it when WEB_DIR=web/dist is set.
 panel-build:
-	npm --prefix web run build
+	VITE_VERSION=$(SOFTSWITCH_VERSION) npm --prefix web run build
 
 # One end-to-end call through OpenSIPS, route-engine and rtpengine.
 test-call: lab-seed

@@ -25,6 +25,15 @@ check() {
   for f in ${TLS_CA_LIST:-} ${TLS_CLIENT_CA:-}; do
     openssl x509 -in "$f" -noout 2>/dev/null || { echo "tls: $f holds no certificate" >&2; return 1; }
   done
+  # Each file is one value of the table, and the SIP core reads no value
+  # longer than DB_TEXT_BUFFER (run.sh, T-50): a longer one would make the
+  # whole table unreadable, at a reload and at the next start alike. (The
+  # value is the file plus at most a closing line break.)
+  for f in "$TLS_CERT" "$TLS_KEY" ${TLS_CA_LIST:-} ${TLS_CLIENT_CA:-}; do
+    size=$(wc -c < "$f" | tr -d ' ')
+    [ "$size" -lt "${DB_TEXT_BUFFER:-4096}" ] \
+      || { echo "tls: $f is $size bytes; the SIP core reads files of less than ${DB_TEXT_BUFFER:-4096}" >&2; return 1; }
+  done
 }
 
 write() {

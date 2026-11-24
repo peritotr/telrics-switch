@@ -2,9 +2,12 @@
 package metrics
 
 import (
+	"runtime"
 	"strings"
 	"testing"
 	"time"
+
+	"softswitch/core/pkg/version"
 )
 
 func TestWrite(t *testing.T) {
@@ -31,6 +34,15 @@ func TestWrite(t *testing.T) {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("output lacks %q:\n%s", want, out.String())
 		}
+	}
+}
+
+func TestBuildInfo(t *testing.T) {
+	var out strings.Builder
+	Write(&out)
+	want := "softswitch_build_info{version=\"" + version.Get() + "\",goversion=\"" + runtime.Version() + "\"} 1\n"
+	if !strings.Contains(out.String(), want) {
+		t.Errorf("output lacks %q", want)
 	}
 }
 

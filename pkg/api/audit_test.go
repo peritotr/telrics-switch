@@ -19,6 +19,7 @@ import (
 
 	"softswitch/core/pkg/store"
 	"softswitch/core/pkg/totp"
+	"softswitch/core/pkg/version"
 )
 
 // freshServer wipes the test database and starts an API on it.
@@ -456,7 +457,7 @@ func TestTwoStep(t *testing.T) {
 	if st := c.do(token, "GET", "/v1/me/two-step", nil, 200); st["enabled"] != true || num(st, "recovery_codes_left") != 10 {
 		t.Errorf("status after: %v", st)
 	}
-	if sess := c.do(token, "GET", "/v1/session", nil, 200); sess["user"].(map[string]any)["two_step"] != true {
+	if sess := c.do(token, "GET", "/v1/session", nil, 200); sess["user"].(map[string]any)["two_step"] != true || sess["version"] != version.Get() {
 		t.Errorf("session: %v", sess)
 	}
 	for _, u := range c.raw(root, "GET", "/v1/users", nil, 200).([]any) {

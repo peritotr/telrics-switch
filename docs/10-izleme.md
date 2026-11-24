@@ -22,6 +22,7 @@ Kendi servislerimizin ölçüleri (`pkg/metrics`; sayaçlar çağrı yolunda tek
 
 | Ölçü | Anlamı |
 |---|---|
+| `softswitch_build_info{version, goversion}` | Sürecin derlendiği sürüm (her zaman 1; ADR-0051). Motor, API, rater ve iz toplayıcı verir; yükseltmeden sonra bütün servislerin yeni sürümde olduğu `count by (version) (softswitch_build_info)` ile görülür. Geliştirme derlemesi `dev`, `dev-<commit>` ya da `-dirty` ekli sürüm yazar |
 | `softswitch_engine_decision_seconds` | Çağrı kararının süresi (histogram). Bütçe: p99 < 10 ms |
 | `softswitch_engine_authorize_total{result}` | Sorulan çağrılar: `allowed` / `refused` |
 | `softswitch_engine_events_total{event}` | SIP çekirdeğinin bildirdiği olaylar |
@@ -139,7 +140,7 @@ OpenSIPS ──HEP/UDP──▶ trace-collector ──▶ ClickHouse (sip_messag
 
 **Kapatmak.** `.env` içinde `TRACE_TARGET=` (boş) yazıp `docker compose up -d opensips`: çekirdek kopya göndermez. `trace-collector` servisi çalışmaya devam eder ama boşta kalır.
 
-**Kendi Homer'ınıza göndermek.** `HEP_TARGET=<adres>:<port>` verilirse aynı kopya, kendi toplayıcımıza ek olarak o adrese de gider ([Homer](https://sipcapture.org) gibi; bu kurulumun parçası değildir). Bu kopya maskelenmez: SIP çekirdeğinden olduğu gibi çıkar ve digest cevabını içerir. Laboratuvarda gönderim basit bir alıcıyla denenir; gerçek bir Homer kurulumuyla denenmedi.
+**Kendi Homer'ınıza göndermek.** `HEP_TARGET=<adres>:<port>` verilirse aynı kopya, kendi toplayıcımıza ek olarak o adrese de gider ([Homer](https://sipcapture.org) gibi; bu kurulumun parçası değildir). Bu kopya maskelenmez: SIP çekirdeğinden olduğu gibi çıkar ve digest cevabını içerir. Laboratuvarda gönderim basit bir alıcıyla denenir; gerçek bir Homer kurulumuyla denenmedi. Kopyalar SIP çekirdeğinin ayrı bir soketinden (`HEP_IP:HEP_PORT`, 9061) çıkar; bütün toplayıcılar sunucudaysa bu soket 127.0.0.1'dedir, dışarıda bir `HEP_TARGET` varsa `SIP_IP`'dedir: o toplayıcıya ulaşan iç adresi `HEP_IP` ile verin. Sokete gelen HEP paketi işlenmez, çağrı sayılmaz (T-51; `docs/09-kurulum.md`, "Dışarıya açılmaması gerekenler").
 
 ### İzi okumak
 

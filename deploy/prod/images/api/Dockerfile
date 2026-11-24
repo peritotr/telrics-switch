@@ -6,7 +6,9 @@ WORKDIR /web
 COPY web/package.json web/package-lock.json ./
 RUN npm ci
 COPY web ./
-RUN npm run build
+# The release the panel shows beside the server's (see deploy/images/go).
+ARG VERSION=dev
+RUN VITE_VERSION=${VERSION} npm run build
 
 FROM golang:1.26 AS build
 WORKDIR /src
@@ -15,7 +17,8 @@ RUN go mod download
 COPY cmd cmd
 COPY pkg pkg
 COPY db db
-RUN CGO_ENABLED=0 go build -o /out/service ./cmd/api
+ARG VERSION=dev
+RUN CGO_ENABLED=0 go build -ldflags "-X softswitch/core/pkg/version.Version=${VERSION}" -o /out/service ./cmd/api
 
 FROM gcr.io/distroless/static-debian12
 COPY --from=build /out/service /service

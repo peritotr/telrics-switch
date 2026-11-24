@@ -22,6 +22,7 @@ import (
 
 	"softswitch/core/pkg/rating"
 	"softswitch/core/pkg/routing"
+	"softswitch/core/pkg/version"
 )
 
 func (s *Server) registerOps() {
@@ -32,7 +33,7 @@ func (s *Server) registerOps() {
 		}
 		return err
 	}, Summary("The account behind the credentials in use."), ReturnsRow(200, "resellers"))
-	s.Handle("GET /v1/session", false, s.session, Summary("The signed-in user or key, its role and the edition."),
+	s.Handle("GET /v1/session", false, s.session, Summary("The signed-in user or key, its role, the edition and the version."),
 		Returns(200, sessionInfo{}))
 	s.Handle("GET /v1/api-keys", false, s.listAPIKeys, Summary("List API keys (never their values)."), Returns(200, []apiKey{}))
 	s.Handle("POST /v1/api-keys", true, s.createAPIKey, Summary("Create an API key; its value is returned once."),
@@ -85,7 +86,11 @@ func (s *Server) registerOps() {
 // there for a signed-in person; Key names whoever is signed in, a person or
 // an API key, and its role decides the rights.
 type sessionInfo struct {
-	Edition string          `json:"edition"`
+	Edition string `json:"edition"`
+	// Version is the release the API runs (pkg/version). It is told to
+	// signed-in callers only, here beside the edition, rather than on an
+	// open endpoint: it would tell a scanner which known faults to try.
+	Version string          `json:"version"`
 	Account json.RawMessage `json:"account" openapi:"ref:resellers"`
 	User    *sessionUser    `json:"user,omitempty"`
 	Key     sessionKey      `json:"key"`
@@ -302,7 +307,7 @@ func (s *Server) session(w http.ResponseWriter, r *http.Request, c Caller) error
 		return err
 	}
 	var name, role string
-	out := sessionInfo{Edition: s.edition, Account: json.RawMessage(account)}
+	out := sessionInfo{Edition: s.edition, Version: version.Get(), Account: json.RawMessage(account)}
 	if c.UserID != 0 {
 		u := &sessionUser{ID: c.UserID, TwoStepSetupRequired: c.NeedsTwoStep}
 		if err := s.db.QueryRow(ctx, `select name, role, email, totp_on from users where id = $1`, c.UserID).Scan(&u.Name, &u.Role, &u.Email, &u.TwoStep); err != nil {
